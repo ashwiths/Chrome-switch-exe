@@ -1,0 +1,9 @@
+{
+    "path":  "C:\\Users\\infan\\Desktop\\Chrome switch exe\\chrome-account-switcher\\helper\\ChromeAccountSwitcher.Helper\\bin\\Debug\\net8.0\\ChromeAccountSwitcher.Helper.exe",
+    "description":  "Chrome Account Switcher Native Host",
+    "name":  "com.chrome_account_switcher.helper",
+    "allowed_origins":  [
+                            "chrome-extension://*/*"
+                        ],
+    "type":  "stdio"
+}

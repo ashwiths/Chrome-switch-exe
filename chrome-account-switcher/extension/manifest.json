@@ -1,0 +1,60 @@
+{
+  "manifest_version": 3,
+  "name": "Chrome Account Switcher",
+  "version": "0.1.0",
+  "description": "Fast state-preserving Chrome profile switcher using keyboard shortcuts",
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "service-worker.js",
+    "type": "module"
+  },
+  "permissions": [
+    "nativeMessaging",
+    "storage",
+    "tabs"
+  ],
+  "commands": {
+    "switch-slot-1": {
+      "suggested_key": {
+        "default": "Ctrl+1",
+        "windows": "Ctrl+1",
+        "mac": "Command+1"
+      },
+      "description": "Switch to Profile Slot 1"
+    },
+    "switch-slot-2": {
+      "suggested_key": {
+        "default": "Ctrl+2",
+        "windows": "Ctrl+2",
+        "mac": "Command+2"
+      },
+      "description": "Switch to Profile Slot 2"
+    },
+    "switch-slot-3": {
+      "suggested_key": {
+        "default": "Ctrl+3",
+        "windows": "Ctrl+3",
+        "mac": "Command+3"
+      },
+      "description": "Switch to Profile Slot 3"
+    },
+    "switch-slot-4": {
+      "suggested_key": {
+        "default": "Ctrl+4",
+        "windows": "Ctrl+4",
+        "mac": "Command+4"
+      },
+      "description": "Switch to Profile Slot 4"
+    },
+    "switch-slot-5": {
+      "suggested_key": {
+        "default": "Ctrl+5",
+        "windows": "Ctrl+5",
+        "mac": "Command+5"
+      },
+      "description": "Switch to Profile Slot 5"
+    }
+  }
+}
