@@ -36,16 +36,40 @@ export const App: React.FC = () => {
 
   const handleTriggerSlot = async (slotNumber: number) => {
     setLoadingSlot(slotNumber);
-    setLastStatus(`Switching to Slot ${slotNumber}...`);
+    setLastStatus(`Switching to Slot ${slotNumber} (with tab copying)...`);
 
     try {
+      const validTabs = [];
+      let skippedCount = 0;
+      try {
+        const currentTabs = await chrome.tabs.query({ currentWindow: true, lastFocusedWindow: true });
+        for (const tab of currentTabs) {
+          if (tab.url && (tab.url.startsWith('http://') || tab.url.startsWith('https://'))) {
+            validTabs.push({
+              url: tab.url,
+              title: tab.title || '',
+              active: !!tab.active,
+              index: tab.index
+            });
+          } else {
+            skippedCount++;
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to query current window tabs:', err);
+      }
+
       const response = await sendNativeMessage({
         action: 'switch-profile',
-        slot: slotNumber
+        slot: slotNumber,
+        copyTabs: true,
+        tabs: validTabs
       });
 
       if (response.success) {
-        const msg = `Success: Focused ${response.displayName || response.profile || 'Profile'} (HWND: 0x${(response.windowHandle || 0).toString(16).toUpperCase()})`;
+        const copiedInfo = response.tabsCopied !== undefined ? `${response.tabsCopied} tabs copied` : `${validTabs.length} tabs sent`;
+        const skipInfo = skippedCount > 0 ? ` (${skippedCount} skipped)` : '';
+        const msg = `Success: Focused ${response.displayName || response.profile || 'Profile'}. ${copiedInfo}${skipInfo}.`;
         setLastStatus(msg);
         await storageService.setLastStatus(msg);
       } else {
@@ -86,6 +110,17 @@ export const App: React.FC = () => {
         </div>
       )}
 
+      <div style={{ marginBottom: '10px', padding: '6px 8px', background: 'rgba(255,255,255,0.04)', borderRadius: '4px', fontSize: '10px', color: '#94a3b8', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span>ID: <code style={{ color: '#38bdf8' }}>{chrome?.runtime?.id || 'Unknown'}</code></span>
+        <button
+          style={{ padding: '3px 8px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '3px', cursor: 'pointer', fontSize: '10px', fontWeight: 600 }}
+          onClick={() => handleTriggerSlot(2)}
+          disabled={loadingSlot === 2}
+        >
+          {loadingSlot === 2 ? 'Testing...' : 'TEST SLOT 2'}
+        </button>
+      </div>
+
       <section className="slots-section">
         <h3>Configured Profile Slots</h3>
         <div className="slots-list">
@@ -94,7 +129,11 @@ export const App: React.FC = () => {
               <div className="slot-info">
                 <div className="slot-badge-row">
                   <span className="slot-badge">Slot {item.slot}</span>
-                  <span className="shortcut-badge">Ctrl + {item.slot}</span>
+                  {item.slot <= 4 ? (
+                    <span className="shortcut-badge">Alt + Shift + {item.slot}</span>
+                  ) : (
+                    <span className="shortcut-badge click-badge">Click / Popup</span>
+                  )}
                 </div>
                 <div className="slot-details">
                   <span className="profile-dir">{item.profileDirectory}</span>
@@ -114,7 +153,7 @@ export const App: React.FC = () => {
       </section>
 
       <footer className="footer-note">
-        <span>Use <strong>Ctrl + 1..5</strong> to switch instantly without reloading tabs.</span>
+        <span>Use <strong>Alt + Shift + 1..4</strong> or click any slot to switch instantly.</span>
       </footer>
     </div>
   );

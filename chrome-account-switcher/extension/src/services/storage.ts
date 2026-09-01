@@ -35,19 +35,23 @@ export const sendNativeMessage = (
 ): Promise<NativeSwitchResponse> => {
   return new Promise((resolve) => {
     try {
+      console.log(`[Diagnostic] NATIVE MESSAGE CONNECT/SEND START: host='${NATIVE_HOST_NAME}', extId='${chrome.runtime.id}'`);
       chrome.runtime.sendNativeMessage(
         NATIVE_HOST_NAME,
         message,
         (response: NativeSwitchResponse | undefined) => {
           if (chrome.runtime.lastError) {
+            const err = chrome.runtime.lastError.message || 'Failed to communicate with native helper.';
+            console.error(`[Diagnostic] NATIVE MESSAGE ERROR: ${err}`);
             resolve({
               success: false,
-              error: chrome.runtime.lastError.message || 'Failed to communicate with native helper.'
+              error: err
             });
             return;
           }
 
           if (!response) {
+            console.error('[Diagnostic] NATIVE MESSAGE ERROR: Empty response received from native helper.');
             resolve({
               success: false,
               error: 'Empty response received from native helper.'
@@ -55,13 +59,16 @@ export const sendNativeMessage = (
             return;
           }
 
+          console.log('[Diagnostic] NATIVE MESSAGE SUCCESS:', response);
           resolve(response);
         }
       );
     } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.error(`[Diagnostic] NATIVE MESSAGE EXCEPTION: ${errMsg}`);
       resolve({
         success: false,
-        error: err instanceof Error ? err.message : String(err)
+        error: errMsg
       });
     }
   });

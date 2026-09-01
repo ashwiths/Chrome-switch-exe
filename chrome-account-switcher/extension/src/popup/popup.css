@@ -164,6 +164,13 @@ body {
   border: 1px solid var(--border);
 }
 
+.shortcut-badge.click-badge {
+  background: rgba(59, 130, 246, 0.15);
+  color: #93c5fd;
+  border-color: rgba(59, 130, 246, 0.3);
+  font-family: inherit;
+}
+
 .slot-details {
   font-size: 11px;
   color: var(--text-secondary);

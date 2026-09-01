@@ -7,18 +7,33 @@ export interface ProfileSlotConfig {
   email?: string;
 }
 
+export interface TabInfo {
+  url: string;
+  title?: string;
+  active: boolean;
+  index?: number;
+}
+
 export interface NativeSwitchRequest {
   action: 'switch-profile';
   slot?: number;
   profileDirectory?: string;
+  copyTabs?: boolean;
+  sourceProfile?: string;
+  tabs?: TabInfo[];
 }
 
 export interface NativeSwitchResponse {
   success: boolean;
   profile?: string;
   displayName?: string;
+  sourceProfile?: string;
+  targetProfile?: string;
+  tabsCopied?: number;
+  tabsSkipped?: number;
   windowHandle?: number;
   error?: string;
+  message?: string;
 }
 
 export interface NativeGetProfilesResponse {

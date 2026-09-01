@@ -107,12 +107,30 @@ internal class Program
         {
             if (int.TryParse(args[1], out int slotNum))
             {
-                Console.WriteLine($"Testing Slot {slotNum} Switch...");
-                var res = NativeMessageHost.HandleRequest(new NativeMessageRequest { Action = "switch-profile", Slot = slotNum }, detector, slotManager);
+                var tabs = new List<TabItemDto>();
+                for (int i = 2; i < args.Length; i++)
+                {
+                    if (args[i].StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                        args[i].StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                    {
+                        tabs.Add(new TabItemDto { Url = args[i], Title = args[i], Active = (tabs.Count == 0) });
+                    }
+                }
+
+                Console.WriteLine($"Testing Slot {slotNum} Switch (Tabs to copy: {tabs.Count})...");
+                var res = NativeMessageHost.HandleRequest(new NativeMessageRequest
+                {
+                    Action = "switch-profile",
+                    Slot = slotNum,
+                    CopyTabs = tabs.Count > 0,
+                    Tabs = tabs
+                }, detector, slotManager);
+
                 Console.WriteLine($"Result: {(res.Success ? "SUCCESS" : "FAILED")}");
                 if (res.Success)
                 {
-                    Console.WriteLine($"Focused Profile '{res.Profile}' (HWND: 0x{(res.WindowHandle ?? 0):X8}) without reload or state change.");
+                    Console.WriteLine($"Focused Profile '{res.Profile}' (HWND: 0x{(res.WindowHandle ?? 0):X8}).");
+                    Console.WriteLine($"Source: '{res.SourceProfile}', Target: '{res.TargetProfile}', Copied: {res.TabsCopied}, Skipped: {res.TabsSkipped}");
                 }
                 else
                 {
@@ -133,9 +151,9 @@ internal class Program
         else
         {
             Console.WriteLine("Usage options:");
-            Console.WriteLine("  --switch-slot <1-5>       Test switching to a configured slot");
-            Console.WriteLine("  --focus-hwnd <HWND>       Focus a specific window handle");
-            Console.WriteLine("  --native-messaging        Start in Chrome Native Messaging host mode");
+            Console.WriteLine("  --switch-slot <1-5> [url1 url2 ...]   Test switching to a configured slot (optionally copying URLs)");
+            Console.WriteLine("  --focus-hwnd <HWND>                  Focus a specific window handle");
+            Console.WriteLine("  --native-messaging                   Start in Chrome Native Messaging host mode");
         }
         Console.WriteLine();
     }

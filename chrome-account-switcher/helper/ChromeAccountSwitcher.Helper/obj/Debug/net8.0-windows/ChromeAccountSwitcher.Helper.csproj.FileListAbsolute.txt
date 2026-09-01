@@ -1,0 +1,15 @@
+c:\Users\infan\Desktop\Chrome switch exe\chrome-account-switcher\helper\ChromeAccountSwitcher.Helper\bin\Debug\net8.0-windows\ChromeAccountSwitcher.Helper.exe
+c:\Users\infan\Desktop\Chrome switch exe\chrome-account-switcher\helper\ChromeAccountSwitcher.Helper\bin\Debug\net8.0-windows\ChromeAccountSwitcher.Helper.deps.json
+c:\Users\infan\Desktop\Chrome switch exe\chrome-account-switcher\helper\ChromeAccountSwitcher.Helper\bin\Debug\net8.0-windows\ChromeAccountSwitcher.Helper.runtimeconfig.json
+c:\Users\infan\Desktop\Chrome switch exe\chrome-account-switcher\helper\ChromeAccountSwitcher.Helper\bin\Debug\net8.0-windows\ChromeAccountSwitcher.Helper.dll
+c:\Users\infan\Desktop\Chrome switch exe\chrome-account-switcher\helper\ChromeAccountSwitcher.Helper\bin\Debug\net8.0-windows\ChromeAccountSwitcher.Helper.pdb
+c:\Users\infan\Desktop\Chrome switch exe\chrome-account-switcher\helper\ChromeAccountSwitcher.Helper\obj\Debug\net8.0-windows\ChromeAccountSwitcher.Helper.GeneratedMSBuildEditorConfig.editorconfig
+c:\Users\infan\Desktop\Chrome switch exe\chrome-account-switcher\helper\ChromeAccountSwitcher.Helper\obj\Debug\net8.0-windows\ChromeAccountSwitcher.Helper.AssemblyInfoInputs.cache
+c:\Users\infan\Desktop\Chrome switch exe\chrome-account-switcher\helper\ChromeAccountSwitcher.Helper\obj\Debug\net8.0-windows\ChromeAccountSwitcher.Helper.AssemblyInfo.cs
+c:\Users\infan\Desktop\Chrome switch exe\chrome-account-switcher\helper\ChromeAccountSwitcher.Helper\obj\Debug\net8.0-windows\ChromeAccountSwitcher.Helper.csproj.CoreCompileInputs.cache
+c:\Users\infan\Desktop\Chrome switch exe\chrome-account-switcher\helper\ChromeAccountSwitcher.Helper\obj\Debug\net8.0-windows\ChromeAccountSwitcher.Helper.sourcelink.json
+c:\Users\infan\Desktop\Chrome switch exe\chrome-account-switcher\helper\ChromeAccountSwitcher.Helper\obj\Debug\net8.0-windows\ChromeAccountSwitcher.Helper.dll
+c:\Users\infan\Desktop\Chrome switch exe\chrome-account-switcher\helper\ChromeAccountSwitcher.Helper\obj\Debug\net8.0-windows\refint\ChromeAccountSwitcher.Helper.dll
+c:\Users\infan\Desktop\Chrome switch exe\chrome-account-switcher\helper\ChromeAccountSwitcher.Helper\obj\Debug\net8.0-windows\ChromeAccountSwitcher.Helper.pdb
+c:\Users\infan\Desktop\Chrome switch exe\chrome-account-switcher\helper\ChromeAccountSwitcher.Helper\obj\Debug\net8.0-windows\ChromeAccountSwitcher.Helper.genruntimeconfig.cache
+c:\Users\infan\Desktop\Chrome switch exe\chrome-account-switcher\helper\ChromeAccountSwitcher.Helper\obj\Debug\net8.0-windows\ref\ChromeAccountSwitcher.Helper.dll

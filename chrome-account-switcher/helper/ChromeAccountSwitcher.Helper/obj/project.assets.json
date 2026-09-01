@@ -1,11 +1,11 @@
 {
   "version": 3,
   "targets": {
-    "net8.0": {}
+    "net8.0-windows7.0": {}
   },
   "libraries": {},
   "projectFileDependencyGroups": {
-    "net8.0": []
+    "net8.0-windows7.0": []
   },
   "packageFolders": {
     "C:\\Users\\infan\\.nuget\\packages\\": {}
@@ -13,24 +13,24 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\infan\\Desktop\\Chrome switch exe\\chrome-account-switcher\\helper\\ChromeAccountSwitcher.Helper\\ChromeAccountSwitcher.Helper.csproj",
+      "projectUniqueName": "c:\\Users\\infan\\Desktop\\Chrome switch exe\\chrome-account-switcher\\helper\\ChromeAccountSwitcher.Helper\\ChromeAccountSwitcher.Helper.csproj",
       "projectName": "ChromeAccountSwitcher.Helper",
-      "projectPath": "C:\\Users\\infan\\Desktop\\Chrome switch exe\\chrome-account-switcher\\helper\\ChromeAccountSwitcher.Helper\\ChromeAccountSwitcher.Helper.csproj",
+      "projectPath": "c:\\Users\\infan\\Desktop\\Chrome switch exe\\chrome-account-switcher\\helper\\ChromeAccountSwitcher.Helper\\ChromeAccountSwitcher.Helper.csproj",
       "packagesPath": "C:\\Users\\infan\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\infan\\Desktop\\Chrome switch exe\\chrome-account-switcher\\helper\\ChromeAccountSwitcher.Helper\\obj\\",
+      "outputPath": "c:\\Users\\infan\\Desktop\\Chrome switch exe\\chrome-account-switcher\\helper\\ChromeAccountSwitcher.Helper\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "C:\\Users\\infan\\AppData\\Roaming\\NuGet\\NuGet.Config"
       ],
       "originalTargetFrameworks": [
-        "net8.0"
+        "net8.0-windows"
       ],
       "sources": {
         "https://api.nuget.org/v3/index.json": {}
       },
       "frameworks": {
-        "net8.0": {
-          "targetAlias": "net8.0",
+        "net8.0-windows7.0": {
+          "targetAlias": "net8.0-windows",
           "projectReferences": {}
         }
       },
@@ -46,8 +46,8 @@
       }
     },
     "frameworks": {
-      "net8.0": {
-        "targetAlias": "net8.0",
+      "net8.0-windows7.0": {
+        "targetAlias": "net8.0-windows",
         "imports": [
           "net461",
           "net462",

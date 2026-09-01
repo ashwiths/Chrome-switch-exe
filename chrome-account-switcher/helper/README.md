@@ -9,16 +9,16 @@ A lightweight C# .NET 8 helper application for detecting, mapping, and focusing 
 - **Window Activation**: Win32 `SetForegroundWindow`, `ShowWindow(SW_RESTORE)`, `BringWindowToTop`, and `AttachThreadInput`.
 - **Profile Detection**: Process command line inspection via `NtQueryInformationProcess` + `%LOCALAPPDATA%\Google\Chrome\User Data\Local State`.
 
-## Registration (Windows Registry)
+## Registration (Windows Registry & Security)
 
-Run PowerShell as user:
+To secure the Native Messaging host, register it specifically with your Chrome Extension ID (wildcard origins are not permitted):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\register-host.ps1 -ExtensionId <YOUR_EXTENSION_ID>
 ```
 
 This creates the registry key:
-`HKCU\Software\Google\Chrome\NativeMessagingHosts\com.chrome_account_switcher.helper` pointing to `com.chrome_account_switcher.helper.json`.
+`HKCU\Software\Google\Chrome\NativeMessagingHosts\com.chrome_account_switcher.helper` pointing to `com.chrome_account_switcher.helper.json` with `allowed_origins` restricted solely to `chrome-extension://<YOUR_EXTENSION_ID>/`.
 
 ## Testing / Diagnostics
 

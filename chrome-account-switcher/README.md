@@ -43,9 +43,9 @@ dotnet build
 4. Note your assigned **Extension ID** (e.g. `abcdefghijklmnop...`).
 
 ### 3. Register Native Messaging Host
-
-Run the PowerShell registration script to configure the Windows Registry:
-
+ 
+Run the PowerShell registration script to configure the Windows Registry and restrict communication exclusively to your Extension ID:
+ 
 ```powershell
 cd helper
 powershell -ExecutionPolicy Bypass -File .\register-host.ps1 -ExtensionId <YOUR_EXTENSION_ID>
@@ -53,10 +53,10 @@ powershell -ExecutionPolicy Bypass -File .\register-host.ps1 -ExtensionId <YOUR_
 
 ### 4. Switch Between Profiles
 
-- **Ctrl + 1**: Switch to Profile Slot 1 (`Default`)
-- **Ctrl + 2**: Switch to Profile Slot 2 (`Profile 1`)
-- **Ctrl + 3**: Switch to Profile Slot 3 (`Profile 12`)
-- **Ctrl + 4**: Switch to Profile Slot 4 (`Profile 13`)
-- **Ctrl + 5**: Switch to Profile Slot 5 (`Profile 14`)
+- **Alt + Shift + 1**: Switch to Profile Slot 1 (`Default`)
+- **Alt + Shift + 2**: Switch to Profile Slot 2 (`Profile 1`)
+- **Alt + Shift + 3**: Switch to Profile Slot 3 (`Profile 12`)
+- **Alt + Shift + 4**: Switch to Profile Slot 4 (`Profile 13`)
+- **Popup / Click**: Switch to Slot 5 (`Profile 14`) and additional slots
 
-*Note: You can customize slot mappings in `%APPDATA%\ChromeAccountSwitcher\slots.json`.*
+*(Note: `Alt + Shift + 1..4` prevents conflicts with Chrome's native `Ctrl + 1..8` tab-switching shortcuts. Chrome Manifest V3 limits global extension command shortcuts to a maximum of 4. Additional slots are accessible directly through the extension popup).*

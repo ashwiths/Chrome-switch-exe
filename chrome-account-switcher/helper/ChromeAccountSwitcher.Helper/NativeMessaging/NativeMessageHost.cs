@@ -96,6 +96,15 @@ public static class NativeMessageHost
 
             if (request.Slot.HasValue)
             {
+                if (request.Slot.Value < 1 || request.Slot.Value > 10)
+                {
+                    return new NativeMessageResponse
+                    {
+                        Success = false,
+                        Error = $"Invalid slot number: {request.Slot.Value}. Must be between 1 and 10."
+                    };
+                }
+
                 var slotEntry = slotManager.GetSlot(request.Slot.Value);
                 if (slotEntry == null || string.IsNullOrWhiteSpace(slotEntry.ProfileDirectory))
                 {
@@ -121,11 +130,48 @@ public static class NativeMessageHost
                 };
             }
 
-            // Scan currently running Chrome windows
+            // Validate targetDirectory against directory traversal / invalid characters
+            if (targetDirectory.Contains('/') || targetDirectory.Contains('\\') || targetDirectory.Contains("..") ||
+                Path.GetInvalidFileNameChars().Any(c => targetDirectory.Contains(c)))
+            {
+                return new NativeMessageResponse
+                {
+                    Success = false,
+                    Error = "Invalid profile directory name."
+                };
+            }
+
+            // 1. Identify source profile
+            string? sourceProfile = request.SourceProfile;
             var detectedWindows = detector.DetectChromeWindows(out _);
             var browserWindows = detectedWindows.Where(w => w.IsNormalBrowserWindow).ToList();
 
-            // Find windows belonging to target directory
+            if (string.IsNullOrEmpty(sourceProfile))
+            {
+                var currentFocused = browserWindows.FirstOrDefault(w => w.IsFocused);
+                sourceProfile = currentFocused?.ProfileDisplayName ?? currentFocused?.ProfileDirectory ?? "Unknown";
+            }
+
+            // 2. Filter and sanitize tabs to copy
+            var validUrls = new List<string>();
+            int tabsSkipped = 0;
+
+            if (request.CopyTabs == true && request.Tabs != null)
+            {
+                foreach (var tab in request.Tabs)
+                {
+                    if (ChromeLauncher.IsValidHttpUrl(tab.Url, out var safeUrl))
+                    {
+                        validUrls.Add(safeUrl);
+                    }
+                    else
+                    {
+                        tabsSkipped++;
+                    }
+                }
+            }
+
+            // 3. Find windows belonging to target directory
             var matchingWindows = browserWindows
                 .Where(w => w.ProfileDirectory != null &&
                             w.ProfileDirectory.Equals(targetDirectory, StringComparison.OrdinalIgnoreCase))
@@ -139,42 +185,80 @@ public static class NativeMessageHost
                     .ToList();
             }
 
-            if (matchingWindows.Count == 0)
+            bool isTargetRunning = matchingWindows.Count > 0;
+            IntPtr targetHwnd = IntPtr.Zero;
+            string? resolvedDisplayName = targetDisplayName;
+
+            if (isTargetRunning)
             {
-                return new NativeMessageResponse
+                // Target profile is ALREADY RUNNING:
+                // If tabs to copy, open them in the running profile
+                if (validUrls.Count > 0)
                 {
-                    Success = false,
-                    Error = $"Target profile '{targetDisplayName ?? targetDirectory}' is not currently running."
-                };
+                    ChromeLauncher.OpenUrlsInProfile(targetDirectory, validUrls);
+                    System.Threading.Thread.Sleep(150); // Allow Chrome singleton IPC to receive tabs
+                }
+
+                // Deterministic Window Selection:
+                // 1. Prefer focused window if already active
+                // 2. Prefer visible, non-minimized normal browser window
+                // 3. Fallback to any matching window
+                var targetWindow = matchingWindows.FirstOrDefault(w => w.IsFocused)
+                                   ?? matchingWindows.FirstOrDefault(w => w.IsVisible && !w.IsMinimized)
+                                   ?? matchingWindows.First();
+
+                targetHwnd = targetWindow.Hwnd;
+                resolvedDisplayName = resolvedDisplayName ?? targetWindow.ProfileDisplayName ?? targetDirectory;
+                WindowManager.FocusWindow(targetHwnd);
             }
-
-            // Deterministic Window Selection (Rule 5):
-            // 1. Prefer focused window if already active
-            // 2. Prefer visible, non-minimized normal browser window
-            // 3. Fallback to any matching window
-            var targetWindow = matchingWindows.FirstOrDefault(w => w.IsFocused)
-                               ?? matchingWindows.FirstOrDefault(w => w.IsVisible && !w.IsMinimized)
-                               ?? matchingWindows.First();
-
-            bool focused = WindowManager.FocusWindow(targetWindow.Hwnd);
-            if (!focused)
+            else
             {
-                return new NativeMessageResponse
+                // Target profile is NOT RUNNING:
+                // Launch Chrome for target profile with the copied URLs (or empty if none)
+                bool launched = ChromeLauncher.OpenUrlsInProfile(targetDirectory, validUrls);
+                if (!launched)
                 {
-                    Success = false,
-                    Profile = targetDirectory,
-                    DisplayName = targetDisplayName ?? targetWindow.ProfileDisplayName,
-                    WindowHandle = targetWindow.Hwnd.ToInt64(),
-                    Error = $"Failed to bring window (HWND: 0x{targetWindow.Hwnd.ToInt64():X8}) to foreground."
-                };
+                    return new NativeMessageResponse
+                    {
+                        Success = false,
+                        Profile = targetDirectory,
+                        DisplayName = targetDisplayName ?? targetDirectory,
+                        SourceProfile = sourceProfile,
+                        TargetProfile = targetDisplayName ?? targetDirectory,
+                        Error = $"Failed to launch Chrome for profile '{targetDisplayName ?? targetDirectory}'."
+                    };
+                }
+
+                // Wait and poll for target window to initialize (up to 3 seconds)
+                for (int attempt = 0; attempt < 12; attempt++)
+                {
+                    System.Threading.Thread.Sleep(250);
+                    var reDetected = detector.DetectChromeWindows(out _);
+                    var targetWin = reDetected.FirstOrDefault(w =>
+                        w.IsNormalBrowserWindow &&
+                        ((w.ProfileDirectory != null && w.ProfileDirectory.Equals(targetDirectory, StringComparison.OrdinalIgnoreCase)) ||
+                         (!string.IsNullOrEmpty(targetDisplayName) && w.Title.IndexOf(targetDisplayName, StringComparison.OrdinalIgnoreCase) >= 0)));
+
+                    if (targetWin != null)
+                    {
+                        targetHwnd = targetWin.Hwnd;
+                        resolvedDisplayName = resolvedDisplayName ?? targetWin.ProfileDisplayName ?? targetDirectory;
+                        WindowManager.FocusWindow(targetHwnd);
+                        break;
+                    }
+                }
             }
 
             return new NativeMessageResponse
             {
                 Success = true,
                 Profile = targetDirectory,
-                DisplayName = targetDisplayName ?? targetWindow.ProfileDisplayName ?? targetDirectory,
-                WindowHandle = targetWindow.Hwnd.ToInt64()
+                DisplayName = resolvedDisplayName ?? targetDirectory,
+                SourceProfile = sourceProfile,
+                TargetProfile = resolvedDisplayName ?? targetDirectory,
+                TabsCopied = validUrls.Count,
+                TabsSkipped = tabsSkipped,
+                WindowHandle = targetHwnd != IntPtr.Zero ? targetHwnd.ToInt64() : null
             };
         }
 
