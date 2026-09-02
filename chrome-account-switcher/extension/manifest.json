@@ -25,39 +25,5 @@
       "js": ["content.js"],
       "run_at": "document_start"
     }
-  ],
-  "commands": {
-    "switch-slot-1": {
-      "suggested_key": {
-        "default": "Alt+1",
-        "windows": "Alt+1",
-        "mac": "Alt+1"
-      },
-      "description": "Switch to Profile Slot 1"
-    },
-    "switch-slot-2": {
-      "suggested_key": {
-        "default": "Alt+2",
-        "windows": "Alt+2",
-        "mac": "Alt+2"
-      },
-      "description": "Switch to Profile Slot 2"
-    },
-    "switch-slot-3": {
-      "suggested_key": {
-        "default": "Alt+3",
-        "windows": "Alt+3",
-        "mac": "Alt+3"
-      },
-      "description": "Switch to Profile Slot 3"
-    },
-    "switch-slot-4": {
-      "suggested_key": {
-        "default": "Alt+4",
-        "windows": "Alt+4",
-        "mac": "Alt+4"
-      },
-      "description": "Switch to Profile Slot 4"
-    }
-  }
+  ]
 }

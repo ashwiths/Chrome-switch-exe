@@ -5,20 +5,21 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using ChromeAccountSwitcher.Helper.Chrome;
+using ChromeAccountSwitcher.Helper.Hotkeys;
 using ChromeAccountSwitcher.Helper.Windows;
 
 namespace ChromeAccountSwitcher.Helper.NativeMessaging;
 
 public static class NativeMessageHost
 {
-    private static HotKeyManager? _activeHotKeyManager;
+    private static GlobalHotkeyManager? _activeHotKeyManager;
 
     public static void Run(ChromeWindowDetector detector, SlotConfigManager slotManager)
     {
         using Stream inStream = Console.OpenStandardInput();
         using Stream outStream = Console.OpenStandardOutput();
 
-        using var hotKeyManager = new HotKeyManager(detector, slotManager);
+        using var hotKeyManager = new GlobalHotkeyManager(detector, slotManager);
         _activeHotKeyManager = hotKeyManager;
         hotKeyManager.Start();
 
@@ -145,16 +146,85 @@ public static class NativeMessageHost
             };
         }
 
-        if (request.Action.Equals("set-shortcut", StringComparison.OrdinalIgnoreCase))
+        if (request.Action.Equals("validateShortcut", StringComparison.OrdinalIgnoreCase))
         {
-            if (request.Slot.HasValue && request.Slot.Value >= 1 && request.Slot.Value <= 50)
+            string sc = request.Shortcut ?? string.Empty;
+            if (_activeHotKeyManager != null)
             {
+                var (ok, err) = _activeHotKeyManager.ValidateShortcut(sc);
+                return new NativeMessageResponse
+                {
+                    Success = ok,
+                    Error = err,
+                    Shortcut = sc
+                };
+            }
+            return new NativeMessageResponse { Success = true, Shortcut = sc };
+        }
+
+        if (request.Action.Equals("getShortcuts", StringComparison.OrdinalIgnoreCase))
+        {
+            var hotkeys = _activeHotKeyManager?.GetActiveHotkeys();
+            return new NativeMessageResponse
+            {
+                Success = true,
+                Hotkeys = hotkeys,
+                Slots = slotManager.GetAllSlots()
+            };
+        }
+
+        if (request.Action.Equals("clearShortcut", StringComparison.OrdinalIgnoreCase) ||
+            request.Action.Equals("clear-shortcut", StringComparison.OrdinalIgnoreCase))
+        {
+            if (request.Slot.HasValue)
+            {
+                slotManager.SetSlotShortcut(request.Slot.Value, null);
+                _activeHotKeyManager?.Refresh();
+                return new NativeMessageResponse
+                {
+                    Success = true,
+                    Message = $"Shortcut for Slot {request.Slot.Value} cleared.",
+                    Slot = request.Slot.Value,
+                    Shortcut = null,
+                    Slots = slotManager.GetAllSlots()
+                };
+            }
+            return new NativeMessageResponse
+            {
+                Success = false,
+                Error = "Slot is required to clear shortcut."
+            };
+        }
+
+        if (request.Action.Equals("setShortcut", StringComparison.OrdinalIgnoreCase) ||
+            request.Action.Equals("set-shortcut", StringComparison.OrdinalIgnoreCase))
+        {
+            if (request.Slot.HasValue && request.Slot.Value >= 1 && request.Slot.Value <= 100)
+            {
+                // Validate if setting non-empty shortcut
+                if (!string.IsNullOrWhiteSpace(request.Shortcut) && _activeHotKeyManager != null)
+                {
+                    var (valOk, valErr) = _activeHotKeyManager.ValidateShortcut(request.Shortcut);
+                    if (!valOk)
+                    {
+                        return new NativeMessageResponse
+                        {
+                            Success = false,
+                            Error = valErr,
+                            Slot = request.Slot.Value,
+                            Shortcut = request.Shortcut
+                        };
+                    }
+                }
+
                 slotManager.SetSlotShortcut(request.Slot.Value, request.Shortcut);
                 _activeHotKeyManager?.Refresh();
                 return new NativeMessageResponse
                 {
                     Success = true,
-                    Message = $"Shortcut for Slot {request.Slot.Value} updated.",
+                    Message = $"Shortcut for Slot {request.Slot.Value} updated to '{request.Shortcut}'.",
+                    Slot = request.Slot.Value,
+                    Shortcut = request.Shortcut,
                     Slots = slotManager.GetAllSlots()
                 };
             }
@@ -162,7 +232,19 @@ public static class NativeMessageHost
             return new NativeMessageResponse
             {
                 Success = false,
-                Error = "Invalid slot number provided for set-shortcut."
+                Error = "Invalid slot number provided for setShortcut."
+            };
+        }
+
+        if (request.Action.Equals("getHelperStatus", StringComparison.OrdinalIgnoreCase))
+        {
+            var hotkeys = _activeHotKeyManager?.GetActiveHotkeys() ?? new();
+            return new NativeMessageResponse
+            {
+                Success = true,
+                Message = "Chrome Account Switcher Helper is running with Win32 Global Hotkeys.",
+                Hotkeys = hotkeys,
+                Slots = slotManager.GetAllSlots()
             };
         }
 
@@ -180,6 +262,11 @@ public static class NativeMessageHost
                 Message = "Slots synchronized successfully.",
                 Slots = slotManager.GetAllSlots()
             };
+        }
+
+        if (request.Action.Equals("switchSlot", StringComparison.OrdinalIgnoreCase))
+        {
+            request.Action = "switch-profile";
         }
 
         if (request.Action.Equals("switch-profile", StringComparison.OrdinalIgnoreCase))

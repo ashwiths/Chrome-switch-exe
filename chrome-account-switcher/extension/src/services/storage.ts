@@ -105,8 +105,40 @@ export const storageService = {
     const targetSlot = slots.find((s) => s.slot === slotNumber);
     if (targetSlot) {
       await storageService.setProfileShortcut(targetSlot.profileDirectory, shortcut);
+      try {
+        await sendNativeMessage({
+          action: shortcut ? 'setShortcut' : 'clearShortcut',
+          slot: slotNumber,
+          shortcut: shortcut || undefined
+        });
+      } catch (err) {
+        console.warn('[Storage] Failed to sync shortcut to helper:', err);
+      }
     }
     return await storageService.getSlotConfigs();
+  },
+
+  clearSlotShortcut: async (slotNumber: number): Promise<ProfileSlotConfig[]> => {
+    const slots = await storageService.getSlotConfigs();
+    const targetSlot = slots.find((s) => s.slot === slotNumber);
+    if (targetSlot) {
+      await storageService.setProfileShortcut(targetSlot.profileDirectory, undefined);
+      try {
+        await sendNativeMessage({ action: 'clearShortcut', slot: slotNumber });
+      } catch (err) {
+        console.warn('[Storage] Failed to clear shortcut in helper:', err);
+      }
+    }
+    return await storageService.getSlotConfigs();
+  },
+
+  validateShortcutWithHelper: async (shortcut: string): Promise<{ valid: boolean; error?: string }> => {
+    try {
+      const res = await sendNativeMessage({ action: 'validateShortcut', shortcut });
+      return { valid: res.success, error: res.error };
+    } catch (err: unknown) {
+      return { valid: false, error: err instanceof Error ? err.message : 'Validation failed' };
+    }
   },
 
   updateProfileShortcutByDirectory: async (directory: string, shortcut?: string): Promise<ProfileSlotConfig[]> => {

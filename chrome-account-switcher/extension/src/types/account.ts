@@ -27,8 +27,33 @@ export interface TabInfo {
   index?: number;
 }
 
+export interface HotkeyItem {
+  id: number;
+  slot: number;
+  profileDirectory: string;
+  displayName?: string;
+  shortcut: string;
+  isRegistered: boolean;
+  registrationError?: string;
+}
+
 export interface NativeSwitchRequest {
-  action: 'switch-profile' | 'get-slots' | 'set-shortcut' | 'sync-slots' | 'ping' | 'getProfiles' | 'get-profiles';
+  action:
+    | 'switch-profile'
+    | 'switchSlot'
+    | 'get-slots'
+    | 'getShortcuts'
+    | 'setShortcut'
+    | 'set-shortcut'
+    | 'clearShortcut'
+    | 'clear-shortcut'
+    | 'validateShortcut'
+    | 'sync-slots'
+    | 'ping'
+    | 'getProfiles'
+    | 'get-profiles'
+    | 'refreshProfiles'
+    | 'getHelperStatus';
   slot?: number;
   profileDirectory?: string;
   copyTabs?: boolean;
@@ -52,4 +77,7 @@ export interface NativeSwitchResponse {
   slots?: ProfileSlotConfig[];
   profiles?: DiscoveredProfile[];
   currentProfile?: string;
+  slot?: number;
+  shortcut?: string;
+  hotkeys?: HotkeyItem[];
 }

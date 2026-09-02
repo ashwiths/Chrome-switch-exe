@@ -151,7 +151,7 @@ internal class Program
         else if (args.Length >= 1 && args[0].Equals("--listen-hotkeys", StringComparison.OrdinalIgnoreCase))
         {
             Console.WriteLine("Starting global Win32 hotkey listener daemon...");
-            using var hotKeyManager = new HotKeyManager(detector, slotManager);
+            using var hotKeyManager = new ChromeAccountSwitcher.Helper.Hotkeys.GlobalHotkeyManager(detector, slotManager);
             hotKeyManager.Start();
             Console.WriteLine("Global hotkeys active. Running background daemon...");
             new System.Threading.ManualResetEvent(false).WaitOne();

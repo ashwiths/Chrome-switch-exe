@@ -80,6 +80,15 @@ export const ShortcutModal: React.FC<ShortcutModalProps> = ({
 
     setSaving(true);
     try {
+      // Validate directly with Windows Win32 RegisterHotKey via helper
+      const { storageService } = await import('../services/storage');
+      const win32Val = await storageService.validateShortcutWithHelper(recordedCombination);
+      if (!win32Val.valid) {
+        setErrorMessage(win32Val.error || 'Windows rejected this shortcut.');
+        setSaving(false);
+        return;
+      }
+
       await onSave(slot.slot, recordedCombination);
       onClose();
     } catch (err: unknown) {

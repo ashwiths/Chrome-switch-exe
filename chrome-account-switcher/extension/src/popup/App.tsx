@@ -178,17 +178,16 @@ export const App: React.FC = () => {
 
           <div className="flex items-center gap-1.5">
             <button
-              className={`w-6 h-6 rounded flex items-center justify-center bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white transition-all text-xs ${
-                isRefreshing ? 'animate-spin-custom' : ''
-              }`}
+              className="py-1 px-2 rounded-lg flex items-center gap-1 bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white transition-all text-[11px] font-medium active:scale-95 shadow-sm"
               onClick={loadData}
               disabled={isRefreshing}
-              title="Refresh detected Chrome profiles"
+              title="Rescan Chrome Local State and active windows"
             >
-              ↻
+              <span className={`inline-block ${isRefreshing ? 'animate-spin-custom' : ''}`}>↻</span>
+              <span>Refresh Profiles</span>
             </button>
             <span
-              className={`text-[10px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1.5 border ${
+              className={`text-[10px] font-semibold px-2 py-1 rounded-lg flex items-center gap-1.5 border ${
                 hostStatus === 'connected'
                   ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
                   : hostStatus === 'checking'
@@ -329,11 +328,12 @@ export const App: React.FC = () => {
                 {/* Actions */}
                 <div className="flex items-center gap-1.5 ml-2 shrink-0">
                   <button
-                    className="text-[10px] font-medium px-2 py-1 rounded-md bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10 hover:text-white hover:border-white/20 active:scale-95 transition-all"
+                    className="text-[10px] font-medium px-2 py-1 rounded-md bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10 hover:text-white hover:border-white/20 active:scale-95 transition-all flex items-center gap-1"
                     onClick={() => setEditingSlot(item)}
-                    title={`Configure shortcut for ${item.displayName || item.profileDirectory}`}
+                    title={`Configure custom shortcut for ${item.displayName || item.profileDirectory}`}
                   >
-                    ⌨ Key
+                    <span>⌨</span>
+                    <span>Custom Key</span>
                   </button>
                   <button
                     className={`text-[11px] font-semibold px-3 py-1 rounded-md transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${

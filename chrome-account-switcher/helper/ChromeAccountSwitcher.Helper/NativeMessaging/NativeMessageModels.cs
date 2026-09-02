@@ -109,4 +109,42 @@ public class NativeMessageResponse
 
     [JsonPropertyName("currentProfile")]
     public string? CurrentProfile { get; set; }
+
+    [JsonPropertyName("slot")]
+    public int? Slot { get; set; }
+
+    [JsonPropertyName("shortcut")]
+    public string? Shortcut { get; set; }
+
+    [JsonPropertyName("hotkeys")]
+    public List<Hotkeys.HotkeyDefinition>? Hotkeys { get; set; }
+}
+
+public class ShortcutDto
+{
+    [JsonPropertyName("ctrl")]
+    public bool Ctrl { get; set; }
+
+    [JsonPropertyName("alt")]
+    public bool Alt { get; set; }
+
+    [JsonPropertyName("shift")]
+    public bool Shift { get; set; }
+
+    [JsonPropertyName("win")]
+    public bool Win { get; set; }
+
+    [JsonPropertyName("key")]
+    public string? Key { get; set; }
+
+    public string ToShortcutString()
+    {
+        var parts = new List<string>();
+        if (Ctrl) parts.Add("Ctrl");
+        if (Alt) parts.Add("Alt");
+        if (Shift) parts.Add("Shift");
+        if (Win) parts.Add("Win");
+        if (!string.IsNullOrWhiteSpace(Key)) parts.Add(Key.Trim());
+        return string.Join(" + ", parts);
+    }
 }
