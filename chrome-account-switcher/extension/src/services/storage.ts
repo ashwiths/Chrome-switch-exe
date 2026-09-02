@@ -11,17 +11,28 @@ export const storageService = {
     const res = await chrome.storage.local.get(['profileShortcuts', 'profileSlots']);
     let map: Record<string, string> = res.profileShortcuts || {};
 
+    // Purge any legacy 'Shift' shortcuts
+    let modified = false;
+    for (const key of Object.keys(map)) {
+      if (map[key] && map[key].includes('Shift')) {
+        delete map[key];
+        modified = true;
+      }
+    }
+
     // Migration: If profileShortcuts is empty, migrate from existing profileSlots
     if (Object.keys(map).length === 0 && res.profileSlots && Array.isArray(res.profileSlots)) {
       map = {};
       for (const s of res.profileSlots as ProfileSlotConfig[]) {
-        if (s.profileDirectory && s.shortcut) {
+        if (s.profileDirectory && s.shortcut && !s.shortcut.includes('Shift')) {
           map[s.profileDirectory] = s.shortcut;
         }
       }
-      if (Object.keys(map).length > 0) {
-        await chrome.storage.local.set({ profileShortcuts: map });
-      }
+      modified = true;
+    }
+
+    if (modified) {
+      await chrome.storage.local.set({ profileShortcuts: map });
     }
 
     return map;
@@ -32,7 +43,7 @@ export const storageService = {
    */
   setProfileShortcut: async (directory: string, shortcut?: string): Promise<Record<string, string>> => {
     const map = await storageService.getProfileShortcuts();
-    if (shortcut && shortcut.trim()) {
+    if (shortcut && shortcut.trim() && !shortcut.includes('Shift')) {
       map[directory] = shortcut.trim();
     } else {
       delete map[directory];
@@ -54,7 +65,9 @@ export const storageService = {
         const dynamicSlots: ProfileSlotConfig[] = response.profiles.map((p, idx) => {
           const slotNum = idx + 1;
           const defaultKey = slotNum <= 9 ? `Alt + ${slotNum}` : slotNum === 10 ? 'Alt + 0' : undefined;
-          const assignedShortcut = shortcuts[p.directory] || defaultKey;
+          const assignedShortcut = (shortcuts[p.directory] && !shortcuts[p.directory].includes('Shift'))
+            ? shortcuts[p.directory]
+            : defaultKey;
           return {
             slot: slotNum,
             profileDirectory: p.directory,

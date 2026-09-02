@@ -12,22 +12,15 @@ namespace ChromeAccountSwitcher.Helper.NativeMessaging;
 
 public static class NativeMessageHost
 {
-    private static GlobalHotkeyManager? _activeHotKeyManager;
-
     public static void Run(ChromeWindowDetector detector, SlotConfigManager slotManager)
     {
         using Stream inStream = Console.OpenStandardInput();
         using Stream outStream = Console.OpenStandardOutput();
 
-        using var hotKeyManager = new GlobalHotkeyManager(detector, slotManager);
-        _activeHotKeyManager = hotKeyManager;
-        hotKeyManager.Start();
-
         while (true)
         {
             byte[] lenBytes = new byte[4];
-            int read = inStream.Read(lenBytes, 0, 4);
-            if (read < 4)
+            if (!ReadExact(inStream, lenBytes, 4))
             {
                 // Chrome closed the stdio pipe
                 break;
@@ -40,18 +33,15 @@ public static class NativeMessageHost
             }
 
             byte[] msgBytes = new byte[messageLength];
-            int totalRead = 0;
-            while (totalRead < messageLength)
+            if (!ReadExact(inStream, msgBytes, messageLength))
             {
-                int chunk = inStream.Read(msgBytes, totalRead, messageLength - totalRead);
-                if (chunk <= 0) break;
-                totalRead += chunk;
+                break;
             }
 
             NativeMessageResponse response;
             try
             {
-                string json = Encoding.UTF8.GetString(msgBytes, 0, totalRead);
+                string json = Encoding.UTF8.GetString(msgBytes, 0, messageLength);
                 var request = JsonSerializer.Deserialize<NativeMessageRequest>(json);
                 response = HandleRequest(request, detector, slotManager);
             }
@@ -71,6 +61,18 @@ public static class NativeMessageHost
             outStream.Write(respJsonBytes, 0, respJsonBytes.Length);
             outStream.Flush();
         }
+    }
+
+    private static bool ReadExact(Stream stream, byte[] buffer, int count)
+    {
+        int offset = 0;
+        while (offset < count)
+        {
+            int read = stream.Read(buffer, offset, count - offset);
+            if (read <= 0) return false;
+            offset += read;
+        }
+        return true;
     }
 
     public static NativeMessageResponse HandleRequest(
@@ -149,26 +151,40 @@ public static class NativeMessageHost
         if (request.Action.Equals("validateShortcut", StringComparison.OrdinalIgnoreCase))
         {
             string sc = request.Shortcut ?? string.Empty;
-            if (_activeHotKeyManager != null)
+            if (!HotKeyHelper.TryParseShortcut(sc, out uint mods, out uint vk))
             {
-                var (ok, err) = _activeHotKeyManager.ValidateShortcut(sc);
                 return new NativeMessageResponse
                 {
-                    Success = ok,
-                    Error = err,
+                    Success = false,
+                    Error = "Invalid shortcut format or missing modifier.",
                     Shortcut = sc
                 };
             }
+
+            int testId = 9999;
+            bool ok = HotKeyHelper.RegisterHotKey(IntPtr.Zero, testId, mods, vk);
+            if (!ok)
+            {
+                int err = System.Runtime.InteropServices.Marshal.GetLastWin32Error();
+                string errMsg = err == 1409
+                    ? "Shortcut is already in use by Windows or another application."
+                    : $"Windows rejected shortcut (Win32 Error: {err}).";
+                return new NativeMessageResponse
+                {
+                    Success = false,
+                    Error = errMsg,
+                    Shortcut = sc
+                };
+            }
+            HotKeyHelper.UnregisterHotKey(IntPtr.Zero, testId);
             return new NativeMessageResponse { Success = true, Shortcut = sc };
         }
 
         if (request.Action.Equals("getShortcuts", StringComparison.OrdinalIgnoreCase))
         {
-            var hotkeys = _activeHotKeyManager?.GetActiveHotkeys();
             return new NativeMessageResponse
             {
                 Success = true,
-                Hotkeys = hotkeys,
                 Slots = slotManager.GetAllSlots()
             };
         }
@@ -179,7 +195,6 @@ public static class NativeMessageHost
             if (request.Slot.HasValue)
             {
                 slotManager.SetSlotShortcut(request.Slot.Value, null);
-                _activeHotKeyManager?.Refresh();
                 return new NativeMessageResponse
                 {
                     Success = true,
@@ -201,24 +216,7 @@ public static class NativeMessageHost
         {
             if (request.Slot.HasValue && request.Slot.Value >= 1 && request.Slot.Value <= 100)
             {
-                // Validate if setting non-empty shortcut
-                if (!string.IsNullOrWhiteSpace(request.Shortcut) && _activeHotKeyManager != null)
-                {
-                    var (valOk, valErr) = _activeHotKeyManager.ValidateShortcut(request.Shortcut);
-                    if (!valOk)
-                    {
-                        return new NativeMessageResponse
-                        {
-                            Success = false,
-                            Error = valErr,
-                            Slot = request.Slot.Value,
-                            Shortcut = request.Shortcut
-                        };
-                    }
-                }
-
                 slotManager.SetSlotShortcut(request.Slot.Value, request.Shortcut);
-                _activeHotKeyManager?.Refresh();
                 return new NativeMessageResponse
                 {
                     Success = true,
@@ -238,12 +236,10 @@ public static class NativeMessageHost
 
         if (request.Action.Equals("getHelperStatus", StringComparison.OrdinalIgnoreCase))
         {
-            var hotkeys = _activeHotKeyManager?.GetActiveHotkeys() ?? new();
             return new NativeMessageResponse
             {
                 Success = true,
                 Message = "Chrome Account Switcher Helper is running with Win32 Global Hotkeys.",
-                Hotkeys = hotkeys,
                 Slots = slotManager.GetAllSlots()
             };
         }
@@ -253,7 +249,6 @@ public static class NativeMessageHost
             if (request.Slots != null && request.Slots.Count > 0)
             {
                 slotManager.SyncSlots(request.Slots);
-                _activeHotKeyManager?.Refresh();
             }
 
             return new NativeMessageResponse

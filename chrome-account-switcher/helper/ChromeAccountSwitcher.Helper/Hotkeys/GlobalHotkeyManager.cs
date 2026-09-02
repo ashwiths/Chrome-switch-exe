@@ -68,6 +68,8 @@ public class GlobalHotkeyManager : IDisposable
         _slotManager = slotManager;
     }
 
+    private FileSystemWatcher? _fileWatcher;
+
     public void Start()
     {
         if (_messageLoopThread != null) return;
@@ -86,6 +88,30 @@ public class GlobalHotkeyManager : IDisposable
         {
             Console.Error.WriteLine("[GlobalHotkeyManager] Primary background daemon is already running. Delegating hotkeys to primary daemon.");
             return;
+        }
+
+        // Watch slots.json for changes made by the Chrome extension
+        try
+        {
+            string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            string configDir = Path.Combine(appData, "ChromeAccountSwitcher");
+            if (Directory.Exists(configDir))
+            {
+                _fileWatcher = new FileSystemWatcher(configDir, "slots.json")
+                {
+                    NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size
+                };
+                _fileWatcher.Changed += (s, e) =>
+                {
+                    Thread.Sleep(150); // Debounce write
+                    Refresh();
+                };
+                _fileWatcher.EnableRaisingEvents = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[GlobalHotkeyManager] FileSystemWatcher error: {ex.Message}");
         }
 
         _messageLoopThread = new Thread(RunMessageLoop)
