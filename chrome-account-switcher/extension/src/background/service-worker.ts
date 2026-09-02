@@ -122,6 +122,3 @@ chrome.runtime.onInstalled.addListener(() => {
   injectContentScriptIntoExistingTabs();
 });
 
-// Run once on service worker wakeup
-injectContentScriptIntoExistingTabs();
-

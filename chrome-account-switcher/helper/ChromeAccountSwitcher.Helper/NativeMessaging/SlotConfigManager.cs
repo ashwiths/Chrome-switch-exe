@@ -43,9 +43,9 @@ public class SlotConfigManager
                 {
                     foreach (var entry in list)
                     {
-                        if (string.IsNullOrEmpty(entry.Shortcut) && entry.Slot <= 5)
+                        if (string.IsNullOrEmpty(entry.Shortcut))
                         {
-                            entry.Shortcut = $"Alt + Shift + {entry.Slot}";
+                            entry.Shortcut = entry.Slot <= 9 ? $"Alt + {entry.Slot}" : (entry.Slot == 10 ? "Alt + 0" : null);
                         }
                         _slots[entry.Slot] = entry;
                     }
@@ -64,18 +64,19 @@ public class SlotConfigManager
         {
             var p = known[i];
             int slotNum = i + 1;
+            string? defaultShortcut = slotNum <= 9 ? $"Alt + {slotNum}" : (slotNum == 10 ? "Alt + 0" : null);
             _slots[slotNum] = new SlotConfigEntry
             {
                 Slot = slotNum,
                 ProfileDirectory = p.DirectoryName,
                 DisplayName = p.DisplayName,
-                Shortcut = slotNum <= 4 ? $"Alt + Shift + {slotNum}" : null
+                Shortcut = defaultShortcut
             };
         }
 
         // Fallbacks if no profiles found
-        if (!_slots.ContainsKey(1)) _slots[1] = new SlotConfigEntry { Slot = 1, ProfileDirectory = "Default", DisplayName = "Default", Shortcut = "Alt + Shift + 1" };
-        if (!_slots.ContainsKey(2)) _slots[2] = new SlotConfigEntry { Slot = 2, ProfileDirectory = "Profile 1", DisplayName = "Slot 2", Shortcut = "Alt + Shift + 2" };
+        if (!_slots.ContainsKey(1)) _slots[1] = new SlotConfigEntry { Slot = 1, ProfileDirectory = "Default", DisplayName = "Default", Shortcut = "Alt + 1" };
+        if (!_slots.ContainsKey(2)) _slots[2] = new SlotConfigEntry { Slot = 2, ProfileDirectory = "Profile 1", DisplayName = "Slot 2", Shortcut = "Alt + 2" };
 
         SaveSlots();
     }

@@ -360,6 +360,20 @@ export const App: React.FC = () => {
         </div>
       </section>
 
+      {/* Direct link to Chrome's native shortcuts manager */}
+      <div className="bg-sky-500/10 border border-sky-500/25 rounded-lg p-2 flex items-center justify-between gap-2 text-xs text-slate-300">
+        <div className="flex flex-col">
+          <span className="font-semibold text-white text-[11px]">Chrome Shortcuts Manager</span>
+          <span className="text-[10px] text-slate-400">Bind Alt + 1, Alt + 2 to switch slots globally</span>
+        </div>
+        <button
+          className="bg-sky-600 hover:bg-sky-500 text-white font-semibold text-[10px] px-2.5 py-1 rounded transition-all shrink-0 shadow-sm"
+          onClick={() => chrome.tabs.create({ url: 'chrome://extensions/shortcuts' })}
+        >
+          Open Shortcuts ↗
+        </button>
+      </div>
+
       {/* Footer */}
       <footer className="pt-2 border-t border-white/10 flex items-center justify-between text-[10px] text-slate-400">
         <span>Press shortcut or click <strong>Switch</strong></span>

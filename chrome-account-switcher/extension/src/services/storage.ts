@@ -53,7 +53,8 @@ export const storageService = {
       if (response.success && response.profiles && response.profiles.length > 0) {
         const dynamicSlots: ProfileSlotConfig[] = response.profiles.map((p, idx) => {
           const slotNum = idx + 1;
-          const assignedShortcut = shortcuts[p.directory] || (slotNum <= 4 ? `Alt + Shift + ${slotNum}` : undefined);
+          const defaultKey = slotNum <= 9 ? `Alt + ${slotNum}` : slotNum === 10 ? 'Alt + 0' : undefined;
+          const assignedShortcut = shortcuts[p.directory] || defaultKey;
           return {
             slot: slotNum,
             profileDirectory: p.directory,
@@ -77,17 +78,21 @@ export const storageService = {
     const cached = await chrome.storage.local.get('profileSlots');
     const existing = cached.profileSlots as ProfileSlotConfig[] | undefined;
     if (existing && Array.isArray(existing) && existing.length > 0) {
-      return existing.map((s, idx) => ({
-        ...s,
-        slot: idx + 1,
-        shortcut: shortcuts[s.profileDirectory] || s.shortcut
-      }));
+      return existing.map((s, idx) => {
+        const slotNum = idx + 1;
+        const defaultKey = slotNum <= 9 ? `Alt + ${slotNum}` : slotNum === 10 ? 'Alt + 0' : undefined;
+        return {
+          ...s,
+          slot: slotNum,
+          shortcut: shortcuts[s.profileDirectory] || s.shortcut || defaultKey
+        };
+      });
     }
 
     // Minimal fallback if helper never connected
     return [
-      { slot: 1, profileDirectory: 'Default', displayName: 'Default', shortcut: shortcuts['Default'] || 'Alt + Shift + 1' },
-      { slot: 2, profileDirectory: 'Profile 1', displayName: 'Profile 1', shortcut: shortcuts['Profile 1'] || 'Alt + Shift + 2' }
+      { slot: 1, profileDirectory: 'Default', displayName: 'Default', shortcut: shortcuts['Default'] || 'Alt + 1' },
+      { slot: 2, profileDirectory: 'Profile 1', displayName: 'Profile 1', shortcut: shortcuts['Profile 1'] || 'Alt + 2' }
     ];
   },
 
