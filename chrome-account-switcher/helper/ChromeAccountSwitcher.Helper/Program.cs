@@ -153,8 +153,8 @@ internal class Program
             Console.WriteLine("Starting global Win32 hotkey listener daemon...");
             using var hotKeyManager = new HotKeyManager(detector, slotManager);
             hotKeyManager.Start();
-            Console.WriteLine("Global hotkeys active. Press Enter to exit.");
-            Console.ReadLine();
+            Console.WriteLine("Global hotkeys active. Running background daemon...");
+            new System.Threading.ManualResetEvent(false).WaitOne();
         }
         else
         {
