@@ -11,10 +11,16 @@ namespace ChromeAccountSwitcher.Helper.NativeMessaging;
 
 public static class NativeMessageHost
 {
+    private static HotKeyManager? _activeHotKeyManager;
+
     public static void Run(ChromeWindowDetector detector, SlotConfigManager slotManager)
     {
         using Stream inStream = Console.OpenStandardInput();
         using Stream outStream = Console.OpenStandardOutput();
+
+        using var hotKeyManager = new HotKeyManager(detector, slotManager);
+        _activeHotKeyManager = hotKeyManager;
+        hotKeyManager.Start();
 
         while (true)
         {
@@ -144,6 +150,7 @@ public static class NativeMessageHost
             if (request.Slot.HasValue && request.Slot.Value >= 1 && request.Slot.Value <= 50)
             {
                 slotManager.SetSlotShortcut(request.Slot.Value, request.Shortcut);
+                _activeHotKeyManager?.Refresh();
                 return new NativeMessageResponse
                 {
                     Success = true,
@@ -164,6 +171,7 @@ public static class NativeMessageHost
             if (request.Slots != null && request.Slots.Count > 0)
             {
                 slotManager.SyncSlots(request.Slots);
+                _activeHotKeyManager?.Refresh();
             }
 
             return new NativeMessageResponse

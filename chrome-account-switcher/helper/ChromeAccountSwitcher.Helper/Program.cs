@@ -148,9 +148,18 @@ internal class Program
                 Console.WriteLine($"Focus result: {(success ? "SUCCESS" : "FAILED")}");
             }
         }
+        else if (args.Length >= 1 && args[0].Equals("--listen-hotkeys", StringComparison.OrdinalIgnoreCase))
+        {
+            Console.WriteLine("Starting global Win32 hotkey listener daemon...");
+            using var hotKeyManager = new HotKeyManager(detector, slotManager);
+            hotKeyManager.Start();
+            Console.WriteLine("Global hotkeys active. Press Enter to exit.");
+            Console.ReadLine();
+        }
         else
         {
             Console.WriteLine("Usage options:");
+            Console.WriteLine("  --listen-hotkeys                     Run global Win32 hotkey listener daemon");
             Console.WriteLine("  --switch-slot <1-5> [url1 url2 ...]   Test switching to a configured slot (optionally copying URLs)");
             Console.WriteLine("  --focus-hwnd <HWND>                  Focus a specific window handle");
             Console.WriteLine("  --native-messaging                   Start in Chrome Native Messaging host mode");

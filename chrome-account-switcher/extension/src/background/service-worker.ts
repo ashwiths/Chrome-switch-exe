@@ -84,8 +84,13 @@ export async function handleSwitchSlot(slotNumber: number, profileDirectory?: st
   return response;
 }
 
-// Listen for messages from extension popup
+// Listen for messages from extension popup and content script
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message.action === 'trigger-custom-shortcut') {
+    console.log(`[Background] Custom shortcut fired: ${message.combination} -> ${message.profileDirectory || 'Slot ' + message.slot}`);
+    handleSwitchSlot(message.slot || 1, message.profileDirectory).then(sendResponse);
+    return true;
+  }
   if (message.action === 'switch-slot' && typeof message.slot === 'number') {
     handleSwitchSlot(message.slot, message.profileDirectory).then(sendResponse);
     return true; // async response
@@ -95,3 +100,28 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 });
+
+// Auto-inject content script into open tabs on install/reload
+async function injectContentScriptIntoExistingTabs() {
+  try {
+    const tabs = await chrome.tabs.query({ url: ['http://*/*', 'https://*/*'] });
+    for (const tab of tabs) {
+      if (tab.id) {
+        chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          files: ['content.js']
+        }).catch(() => {});
+      }
+    }
+  } catch (err) {
+    // Ignore permissions or restricted tabs
+  }
+}
+
+chrome.runtime.onInstalled.addListener(() => {
+  injectContentScriptIntoExistingTabs();
+});
+
+// Run once on service worker wakeup
+injectContentScriptIntoExistingTabs();
+

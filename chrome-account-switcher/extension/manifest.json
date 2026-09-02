@@ -13,38 +13,49 @@
   "permissions": [
     "nativeMessaging",
     "storage",
-    "tabs"
+    "tabs",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
   ],
   "commands": {
     "switch-slot-1": {
       "suggested_key": {
-        "default": "Alt+Shift+1",
-        "windows": "Alt+Shift+1",
-        "mac": "Alt+Shift+1"
+        "default": "Alt+1",
+        "windows": "Alt+1",
+        "mac": "Alt+1"
       },
       "description": "Switch to Profile Slot 1"
     },
     "switch-slot-2": {
       "suggested_key": {
-        "default": "Alt+Shift+2",
-        "windows": "Alt+Shift+2",
-        "mac": "Alt+Shift+2"
+        "default": "Alt+2",
+        "windows": "Alt+2",
+        "mac": "Alt+2"
       },
       "description": "Switch to Profile Slot 2"
     },
     "switch-slot-3": {
       "suggested_key": {
-        "default": "Alt+Shift+3",
-        "windows": "Alt+Shift+3",
-        "mac": "Alt+Shift+3"
+        "default": "Alt+3",
+        "windows": "Alt+3",
+        "mac": "Alt+3"
       },
       "description": "Switch to Profile Slot 3"
     },
     "switch-slot-4": {
       "suggested_key": {
-        "default": "Alt+Shift+4",
-        "windows": "Alt+Shift+4",
-        "mac": "Alt+Shift+4"
+        "default": "Alt+4",
+        "windows": "Alt+4",
+        "mac": "Alt+4"
       },
       "description": "Switch to Profile Slot 4"
     }
