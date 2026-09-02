@@ -3,27 +3,92 @@ import { ProfileSlotConfig, NativeSwitchRequest, NativeSwitchResponse } from '..
 export const NATIVE_HOST_NAME = 'com.chrome_account_switcher.helper';
 
 export const storageService = {
+  /**
+   * Retrieves the map of ProfileDirectory -> Shortcut.
+   * Migrates legacy slot-based shortcuts if necessary.
+   */
+  getProfileShortcuts: async (): Promise<Record<string, string>> => {
+    const res = await chrome.storage.local.get(['profileShortcuts', 'profileSlots']);
+    let map: Record<string, string> = res.profileShortcuts || {};
+
+    // Migration: If profileShortcuts is empty, migrate from existing profileSlots
+    if (Object.keys(map).length === 0 && res.profileSlots && Array.isArray(res.profileSlots)) {
+      map = {};
+      for (const s of res.profileSlots as ProfileSlotConfig[]) {
+        if (s.profileDirectory && s.shortcut) {
+          map[s.profileDirectory] = s.shortcut;
+        }
+      }
+      if (Object.keys(map).length > 0) {
+        await chrome.storage.local.set({ profileShortcuts: map });
+      }
+    }
+
+    return map;
+  },
+
+  /**
+   * Saves a custom shortcut for a specific profile directory.
+   */
+  setProfileShortcut: async (directory: string, shortcut?: string): Promise<Record<string, string>> => {
+    const map = await storageService.getProfileShortcuts();
+    if (shortcut && shortcut.trim()) {
+      map[directory] = shortcut.trim();
+    } else {
+      delete map[directory];
+    }
+    await chrome.storage.local.set({ profileShortcuts: map });
+    return map;
+  },
+
+  /**
+   * Fetches dynamically discovered profiles from native helper,
+   * attaches directory-bound shortcuts, and assigns dynamic 1..N slot positions.
+   */
   getSlotConfigs: async (): Promise<ProfileSlotConfig[]> => {
-    const res = await chrome.storage.local.get('profileSlots');
-    const existing = res.profileSlots as ProfileSlotConfig[] | undefined;
+    const shortcuts = await storageService.getProfileShortcuts();
+
+    try {
+      const response = await sendNativeMessage({ action: 'getProfiles' });
+      if (response.success && response.profiles && response.profiles.length > 0) {
+        const dynamicSlots: ProfileSlotConfig[] = response.profiles.map((p, idx) => {
+          const slotNum = idx + 1;
+          const assignedShortcut = shortcuts[p.directory] || (slotNum <= 4 ? `Alt + Shift + ${slotNum}` : undefined);
+          return {
+            slot: slotNum,
+            profileDirectory: p.directory,
+            displayName: p.displayName || p.directory,
+            gaiaName: p.gaiaName,
+            email: p.email,
+            avatarIcon: p.avatarIcon,
+            shortcut: assignedShortcut,
+            isCurrent: !!p.isCurrent
+          };
+        });
+
+        await chrome.storage.local.set({ profileSlots: dynamicSlots });
+        return dynamicSlots;
+      }
+    } catch (err) {
+      console.warn('[Storage] Failed to query dynamic profiles from helper:', err);
+    }
+
+    // Fallback: Return previously cached slots from local storage
+    const cached = await chrome.storage.local.get('profileSlots');
+    const existing = cached.profileSlots as ProfileSlotConfig[] | undefined;
     if (existing && Array.isArray(existing) && existing.length > 0) {
-      // Ensure each slot has default shortcut if missing
-      return existing.map((s) => ({
+      return existing.map((s, idx) => ({
         ...s,
-        shortcut: s.shortcut !== undefined ? s.shortcut : (s.slot <= 5 ? `Alt + Shift + ${s.slot}` : undefined)
+        slot: idx + 1,
+        shortcut: shortcuts[s.profileDirectory] || s.shortcut
       }));
     }
 
-    const defaultSlots: ProfileSlotConfig[] = [
-      { slot: 1, profileDirectory: 'Default', displayName: 'Slot 1', shortcut: 'Alt + Shift + 1' },
-      { slot: 2, profileDirectory: 'Profile 7', displayName: 'Slot 2', shortcut: 'Alt + Shift + 2' },
-      { slot: 3, profileDirectory: 'Profile 2', displayName: 'Slot 3', shortcut: 'Alt + Shift + 3' },
-      { slot: 4, profileDirectory: 'Profile 1', displayName: 'Slot 4', shortcut: 'Alt + Shift + 4' },
-      { slot: 5, profileDirectory: 'Profile 3', displayName: 'Slot 5', shortcut: 'Alt + Shift + 5' }
+    // Minimal fallback if helper never connected
+    return [
+      { slot: 1, profileDirectory: 'Default', displayName: 'Default', shortcut: shortcuts['Default'] || 'Alt + Shift + 1' },
+      { slot: 2, profileDirectory: 'Profile 1', displayName: 'Profile 1', shortcut: shortcuts['Profile 1'] || 'Alt + Shift + 2' }
     ];
-
-    await chrome.storage.local.set({ profileSlots: defaultSlots });
-    return defaultSlots;
   },
 
   setSlotConfigs: async (slots: ProfileSlotConfig[]): Promise<void> => {
@@ -32,9 +97,16 @@ export const storageService = {
 
   updateSlotShortcut: async (slotNumber: number, shortcut?: string): Promise<ProfileSlotConfig[]> => {
     const slots = await storageService.getSlotConfigs();
-    const updated = slots.map((s) => (s.slot === slotNumber ? { ...s, shortcut } : s));
-    await storageService.setSlotConfigs(updated);
-    return updated;
+    const targetSlot = slots.find((s) => s.slot === slotNumber);
+    if (targetSlot) {
+      await storageService.setProfileShortcut(targetSlot.profileDirectory, shortcut);
+    }
+    return await storageService.getSlotConfigs();
+  },
+
+  updateProfileShortcutByDirectory: async (directory: string, shortcut?: string): Promise<ProfileSlotConfig[]> => {
+    await storageService.setProfileShortcut(directory, shortcut);
+    return await storageService.getSlotConfigs();
   },
 
   getLastStatus: async (): Promise<{ message: string; timestamp: number } | null> => {

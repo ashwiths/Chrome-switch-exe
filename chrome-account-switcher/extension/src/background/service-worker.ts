@@ -22,9 +22,9 @@ chrome.commands.onCommand.addListener(async (command: string) => {
   }
 });
 
-// Handle slot switching via native messaging with tab copying
-export async function handleSwitchSlot(slotNumber: number) {
-  console.log(`[Background] Initiating switch to Slot ${slotNumber} with tab copying...`);
+// Handle slot or profile directory switching via native messaging with tab copying
+export async function handleSwitchSlot(slotNumber: number, profileDirectory?: string) {
+  console.log(`[Background] Initiating switch to Slot ${slotNumber} (${profileDirectory || 'resolving...'}) with tab copying...`);
 
   let validTabs: TabInfo[] = [];
   let skippedCount = 0;
@@ -47,9 +47,24 @@ export async function handleSwitchSlot(slotNumber: number) {
     console.warn('[Background] Failed to query current window tabs:', err);
   }
 
+  // If profileDirectory wasn't passed, resolve from dynamic slots
+  let targetDir = profileDirectory;
+  if (!targetDir) {
+    try {
+      const slots = await storageService.getSlotConfigs();
+      const match = slots.find((s) => s.slot === slotNumber);
+      if (match) {
+        targetDir = match.profileDirectory;
+      }
+    } catch {
+      // Ignore
+    }
+  }
+
   const response = await sendNativeMessage({
     action: 'switch-profile',
     slot: slotNumber,
+    profileDirectory: targetDir,
     copyTabs: true,
     tabs: validTabs
   });
@@ -57,7 +72,7 @@ export async function handleSwitchSlot(slotNumber: number) {
   if (response.success) {
     const copiedInfo = response.tabsCopied !== undefined ? `${response.tabsCopied} tabs copied` : `${validTabs.length} tabs sent`;
     const skipInfo = skippedCount > 0 ? ` (${skippedCount} skipped)` : '';
-    const msg = `Switched to Slot ${slotNumber} (${response.displayName || response.profile || 'Profile'}). ${copiedInfo}${skipInfo}.`;
+    const msg = `Switched to Slot ${slotNumber} (${response.displayName || response.profile || targetDir || 'Profile'}). ${copiedInfo}${skipInfo}.`;
     console.log(`[Background] ${msg}`);
     await storageService.setLastStatus(msg);
   } else {
@@ -72,7 +87,11 @@ export async function handleSwitchSlot(slotNumber: number) {
 // Listen for messages from extension popup
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.action === 'switch-slot' && typeof message.slot === 'number') {
-    handleSwitchSlot(message.slot).then(sendResponse);
+    handleSwitchSlot(message.slot, message.profileDirectory).then(sendResponse);
     return true; // async response
+  }
+  if (message.action === 'switch-profile' && message.profileDirectory) {
+    handleSwitchSlot(message.slot || 1, message.profileDirectory).then(sendResponse);
+    return true;
   }
 });

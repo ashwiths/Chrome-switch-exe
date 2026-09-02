@@ -1,9 +1,23 @@
+export interface DiscoveredProfile {
+  directory: string;
+  displayName: string;
+  gaiaName?: string;
+  email?: string;
+  avatarIcon?: string;
+  orderIndex: number;
+  isCurrent?: boolean;
+  shortcut?: string;
+}
+
 export interface ProfileSlotConfig {
   slot: number;
   profileDirectory: string; // e.g. "Default", "Profile 1", "Profile 7"
   displayName?: string;
+  gaiaName?: string;
   email?: string;
+  avatarIcon?: string;
   shortcut?: string; // e.g. "Alt + Shift + 1", "Ctrl + Alt + 3", "Alt + 2"
+  isCurrent?: boolean;
 }
 
 export interface TabInfo {
@@ -14,7 +28,7 @@ export interface TabInfo {
 }
 
 export interface NativeSwitchRequest {
-  action: 'switch-profile' | 'get-slots' | 'set-shortcut' | 'sync-slots' | 'ping';
+  action: 'switch-profile' | 'get-slots' | 'set-shortcut' | 'sync-slots' | 'ping' | 'getProfiles' | 'get-profiles';
   slot?: number;
   profileDirectory?: string;
   copyTabs?: boolean;
@@ -36,15 +50,6 @@ export interface NativeSwitchResponse {
   error?: string;
   message?: string;
   slots?: ProfileSlotConfig[];
-}
-
-export interface NativeGetProfilesResponse {
-  success: boolean;
-  profiles?: Array<{
-    directoryName: string;
-    displayName: string;
-    email?: string;
-  }>;
-  slots?: ProfileSlotConfig[];
-  error?: string;
+  profiles?: DiscoveredProfile[];
+  currentProfile?: string;
 }
