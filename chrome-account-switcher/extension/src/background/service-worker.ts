@@ -3,24 +3,7 @@ import { TabInfo } from '../types/account';
 
 console.log(`[Background] Chrome Account Switcher service worker initialized. Extension ID: ${chrome.runtime.id}`);
 
-// Listen for keyboard shortcut commands
-chrome.commands.onCommand.addListener(async (command: string) => {
-  console.log(`[Diagnostic] COMMAND RECEIVED: ${command}`);
-
-  let slotNumber: number | null = null;
-  if (command.startsWith('switch-slot-')) {
-    const parsed = parseInt(command.replace('switch-slot-', ''), 10);
-    if (!isNaN(parsed) && parsed >= 1 && parsed <= 5) {
-      slotNumber = parsed;
-    }
-  }
-
-  console.log(`[Diagnostic] SLOT RESOLVED: ${slotNumber}`);
-
-  if (slotNumber !== null) {
-    await handleSwitchSlot(slotNumber);
-  }
-});
+// Chrome commands listener removed in favor of Windows Low-Level Hook (WH_KEYBOARD_LL) daemon
 
 // Handle slot or profile directory switching via native messaging with tab copying
 export async function handleSwitchSlot(slotNumber: number, profileDirectory?: string) {
@@ -101,24 +84,5 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 });
 
-// Auto-inject content script into open tabs on install/reload
-async function injectContentScriptIntoExistingTabs() {
-  try {
-    const tabs = await chrome.tabs.query({ url: ['http://*/*', 'https://*/*'] });
-    for (const tab of tabs) {
-      if (tab.id) {
-        chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          files: ['content.js']
-        }).catch(() => {});
-      }
-    }
-  } catch (err) {
-    // Ignore permissions or restricted tabs
-  }
-}
-
-chrome.runtime.onInstalled.addListener(() => {
-  injectContentScriptIntoExistingTabs();
-});
+// Service worker ready for native messaging and popup events
 

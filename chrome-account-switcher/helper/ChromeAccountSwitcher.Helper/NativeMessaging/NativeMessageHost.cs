@@ -12,41 +12,70 @@ namespace ChromeAccountSwitcher.Helper.NativeMessaging;
 
 public static class NativeMessageHost
 {
+    private static readonly string LogFile = Path.Combine(Path.GetTempPath(), "chrome_switcher_helper.log");
+
+    private static void Log(string msg)
+    {
+        try { File.AppendAllText(LogFile, $"[{DateTime.Now:HH:mm:ss.fff}] {msg}\r\n"); } catch { }
+    }
+
     public static void Run(ChromeWindowDetector detector, SlotConfigManager slotManager)
     {
+        Log("NativeMessageHost.Run started");
         using Stream inStream = Console.OpenStandardInput();
         using Stream outStream = Console.OpenStandardOutput();
 
         while (true)
         {
             byte[] lenBytes = new byte[4];
-            if (!ReadExact(inStream, lenBytes, 4))
+            Log("Waiting for 4-byte message length...");
+            if (!ReadExact(inStream, lenBytes, 0, 4))
             {
-                // Chrome closed the stdio pipe
+                Log("inStream closed or EOF received. Exiting loop.");
                 break;
             }
 
+            // Detect and skip optional UTF-8 BOM preamble (0xEF, 0xBB, 0xBF)
+            if (lenBytes[0] == 0xEF && lenBytes[1] == 0xBB && lenBytes[2] == 0xBF)
+            {
+                Log("Detected UTF-8 BOM preamble. Synchronizing stream...");
+                lenBytes[0] = lenBytes[3];
+                if (!ReadExact(inStream, lenBytes, 1, 3))
+                {
+                    Log("Failed to read remaining length bytes after BOM.");
+                    break;
+                }
+            }
+
             int messageLength = BitConverter.ToInt32(lenBytes, 0);
+            Log($"Received message length: {messageLength} bytes");
+
             if (messageLength <= 0 || messageLength > 1024 * 1024)
             {
+                Log($"Invalid message length: {messageLength}. Continuing...");
                 continue;
             }
 
             byte[] msgBytes = new byte[messageLength];
-            if (!ReadExact(inStream, msgBytes, messageLength))
+            if (!ReadExact(inStream, msgBytes, 0, messageLength))
             {
+                Log("Failed to read complete message body. Exiting loop.");
                 break;
             }
+
+            string json = Encoding.UTF8.GetString(msgBytes, 0, messageLength);
+            Log($"Request JSON: {json}");
 
             NativeMessageResponse response;
             try
             {
-                string json = Encoding.UTF8.GetString(msgBytes, 0, messageLength);
                 var request = JsonSerializer.Deserialize<NativeMessageRequest>(json);
                 response = HandleRequest(request, detector, slotManager);
+                Log($"HandleRequest finished: Success={response.Success}");
             }
             catch (Exception ex)
             {
+                Log($"Exception in HandleRequest: {ex}");
                 response = new NativeMessageResponse
                 {
                     Success = false,
@@ -57,20 +86,23 @@ public static class NativeMessageHost
             byte[] respJsonBytes = JsonSerializer.SerializeToUtf8Bytes(response);
             byte[] respLenBytes = BitConverter.GetBytes(respJsonBytes.Length);
 
+            Log($"Writing response: {respJsonBytes.Length} bytes");
             outStream.Write(respLenBytes, 0, 4);
             outStream.Write(respJsonBytes, 0, respJsonBytes.Length);
             outStream.Flush();
+            Log("Response flushed to outStream successfully.");
         }
+        Log("NativeMessageHost.Run finished.");
     }
 
-    private static bool ReadExact(Stream stream, byte[] buffer, int count)
+    private static bool ReadExact(Stream stream, byte[] buffer, int offset, int count)
     {
-        int offset = 0;
-        while (offset < count)
+        int readTotal = 0;
+        while (readTotal < count)
         {
-            int read = stream.Read(buffer, offset, count - offset);
+            int read = stream.Read(buffer, offset + readTotal, count - readTotal);
             if (read <= 0) return false;
-            offset += read;
+            readTotal += read;
         }
         return true;
     }
