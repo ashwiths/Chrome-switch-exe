@@ -56,6 +56,8 @@ public class GlobalHotkeyManager : IDisposable
     private readonly Dictionary<int, HotkeyDefinition> _registeredHotkeys = new();
     private readonly ChromeWindowDetector _detector;
     private readonly SlotConfigManager _slotManager;
+    private Mutex? _daemonMutex;
+    private bool _isPrimaryDaemon;
     private bool _disposed;
 
     public event Action<HotkeyDefinition>? HotkeyTriggered;
@@ -69,6 +71,22 @@ public class GlobalHotkeyManager : IDisposable
     public void Start()
     {
         if (_messageLoopThread != null) return;
+
+        try
+        {
+            _daemonMutex = new Mutex(true, @"Local\ChromeAccountSwitcher_HotkeyDaemon", out bool createdNew);
+            _isPrimaryDaemon = createdNew;
+        }
+        catch
+        {
+            _isPrimaryDaemon = true;
+        }
+
+        if (!_isPrimaryDaemon)
+        {
+            Console.Error.WriteLine("[GlobalHotkeyManager] Primary background daemon is already running. Delegating hotkeys to primary daemon.");
+            return;
+        }
 
         _messageLoopThread = new Thread(RunMessageLoop)
         {
@@ -127,6 +145,8 @@ public class GlobalHotkeyManager : IDisposable
 
         RegisterAllSlots();
 
+        Console.Error.WriteLine($"[GlobalHotkeyManager] Entering Win32 Message Loop (Thread ID: {_threadId}). Waiting for WM_HOTKEY...");
+
         while (!_disposed && GetMessage(out MSG msg, IntPtr.Zero, 0, 0) > 0)
         {
             if (msg.message == WM_HOTKEY)
@@ -141,11 +161,17 @@ public class GlobalHotkeyManager : IDisposable
 
                 if (target != null)
                 {
+                    Console.Error.WriteLine($"[GlobalHotkeyManager] >>> WM_HOTKEY TRIGGERED at {DateTime.Now:HH:mm:ss.fff}: ID={id} -> Slot {target.Slot} ({target.DisplayName ?? target.ProfileDirectory}) Shortcut='{target.Shortcut}'");
                     OnHotkeyFired(target);
+                }
+                else
+                {
+                    Console.Error.WriteLine($"[GlobalHotkeyManager] WM_HOTKEY received for unknown ID={id}");
                 }
             }
             else if (msg.message == WM_USER_REFRESH)
             {
+                Console.Error.WriteLine("[GlobalHotkeyManager] WM_USER_REFRESH received. Re-registering all slots...");
                 RegisterAllSlots();
             }
 
@@ -153,6 +179,7 @@ public class GlobalHotkeyManager : IDisposable
             DispatchMessage(ref msg);
         }
 
+        Console.Error.WriteLine("[GlobalHotkeyManager] Message loop exited. Unregistering all hotkeys...");
         UnregisterAll();
     }
 
@@ -163,21 +190,31 @@ public class GlobalHotkeyManager : IDisposable
             UnregisterAll();
 
             var slots = _slotManager.GetAllSlots();
-            int currentId = 100;
+            Console.Error.WriteLine($"[GlobalHotkeyManager] Registering hotkeys for {slots.Count} configured slots...");
 
             foreach (var slot in slots)
             {
                 if (string.IsNullOrWhiteSpace(slot.Shortcut) || string.IsNullOrWhiteSpace(slot.ProfileDirectory))
+                {
+                    Console.Error.WriteLine($"  Slot {slot.Slot:D2}: Skipped (No shortcut configured or directory empty)");
                     continue;
+                }
 
                 if (HotKeyHelper.TryParseShortcut(slot.Shortcut, out uint mods, out uint vk))
                 {
-                    bool success = HotKeyHelper.RegisterHotKey(IntPtr.Zero, currentId, mods, vk);
+                    // Stable unique hotkey ID per slot: 1000 + slot number
+                    int id = 1000 + slot.Slot;
+
+                    bool success = HotKeyHelper.RegisterHotKey(IntPtr.Zero, id, mods, vk);
                     int err = success ? 0 : Marshal.GetLastWin32Error();
+
+                    char keyChar = (vk >= 0x30 && vk <= 0x39) ? (char)vk : (char)('?');
+
+                    Console.Error.WriteLine($"  Slot {slot.Slot:D2} (ID={id}) -> Shortcut: '{slot.Shortcut}' (VK=0x{vk:X2} '{keyChar}', Mods=0x{mods:X4}) -> RegisterHotKey: {(success ? "SUCCESS" : "FAILED (Error: " + err + ")")}");
 
                     var def = new HotkeyDefinition
                     {
-                        Id = currentId,
+                        Id = id,
                         Slot = slot.Slot,
                         ProfileDirectory = slot.ProfileDirectory,
                         DisplayName = slot.DisplayName,
@@ -188,10 +225,16 @@ public class GlobalHotkeyManager : IDisposable
                         RegistrationError = success ? null : (err == 1409 ? "Already in use" : $"Error {err}")
                     };
 
-                    _registeredHotkeys[currentId] = def;
-                    currentId++;
+                    _registeredHotkeys[id] = def;
+                }
+                else
+                {
+                    Console.Error.WriteLine($"  Slot {slot.Slot:D2}: Failed to parse shortcut string '{slot.Shortcut}'");
                 }
             }
+
+            int registeredCount = _registeredHotkeys.Values.Count(h => h.IsRegistered);
+            Console.Error.WriteLine($"[GlobalHotkeyManager] Total Active Global Hotkeys: {registeredCount} / {_registeredHotkeys.Count}");
         }
     }
 
@@ -210,25 +253,26 @@ public class GlobalHotkeyManager : IDisposable
         {
             try
             {
+                Console.Error.WriteLine($"[GlobalHotkeyManager] Initiating profile switch for Slot {hotkey.Slot} ('{hotkey.ProfileDirectory}')...");
+
+                var result = NativeMessageHost.HandleRequest(new NativeMessageRequest
+                {
+                    Action = "switch-profile",
+                    Slot = hotkey.Slot,
+                    ProfileDirectory = hotkey.ProfileDirectory,
+                    CopyTabs = false
+                }, _detector, _slotManager);
+
+                Console.Error.WriteLine($"[GlobalHotkeyManager] Switch Finished: Success={result.Success}, Profile='{result.Profile}', HWND=0x{result.WindowHandle:X8}, Error='{result.Error}'");
+
                 if (HotkeyTriggered != null)
                 {
                     HotkeyTriggered.Invoke(hotkey);
                 }
-                else
-                {
-                    // Default fallback switch
-                    NativeMessageHost.HandleRequest(new NativeMessageRequest
-                    {
-                        Action = "switch-profile",
-                        Slot = hotkey.Slot,
-                        ProfileDirectory = hotkey.ProfileDirectory,
-                        CopyTabs = false
-                    }, _detector, _slotManager);
-                }
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[GlobalHotkeyManager] Hotkey action error: {ex.Message}");
+                Console.Error.WriteLine($"[GlobalHotkeyManager] Error executing switch: {ex.Message}");
             }
         });
     }
@@ -241,6 +285,12 @@ public class GlobalHotkeyManager : IDisposable
         if (_threadId != 0)
         {
             PostThreadMessage(_threadId, WM_QUIT, UIntPtr.Zero, IntPtr.Zero);
+        }
+
+        if (_daemonMutex != null)
+        {
+            try { _daemonMutex.ReleaseMutex(); } catch { }
+            _daemonMutex.Dispose();
         }
 
         _startedEvent.Dispose();
