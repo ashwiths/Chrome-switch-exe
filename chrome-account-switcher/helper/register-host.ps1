@@ -22,11 +22,39 @@ if (-not (Test-Path $exePath)) {
 $fullExePath = [System.IO.Path]::GetFullPath($exePath)
 $fullManifestPath = [System.IO.Path]::GetFullPath($manifestPath)
 
+# Auto-detect extension ID if not explicitly provided
+if ($ExtensionId -eq "") {
+    $prefPaths = Get-ChildItem "$env:LOCALAPPDATA\Google\Chrome\User Data" -Recurse -Depth 4 -Filter "Secure Preferences" -ErrorAction SilentlyContinue
+    foreach ($p in $prefPaths) {
+        $raw = Get-Content $p.FullName -Raw -ErrorAction SilentlyContinue
+        if ($raw -match 'chrome-account-switcher.*extension.*dist') {
+            try {
+                $json = ConvertFrom-Json $raw
+                if ($json.extensions.settings) {
+                    $json.extensions.settings.PSObject.Properties | ForEach-Object {
+                        if ($_.Value.path -match 'chrome-account-switcher.*extension.*dist') {
+                            $ExtensionId = $_.Name
+                            Write-Host "Auto-detected Extension ID from Chrome Preferences: $ExtensionId" -ForegroundColor Cyan
+                        }
+                    }
+                }
+            } catch {}
+        }
+        if ($ExtensionId -ne "") { break }
+    }
+}
+
 # Update manifest JSON with absolute path and allowed extension origins
 if ($ExtensionId -ne "") {
     # Clean user input if full URL was pasted
     $cleanId = $ExtensionId -replace "^chrome-extension://", "" -replace "/.*$", ""
     $cleanId = $cleanId.Trim()
+
+    if ($cleanId.Length -ne 32) {
+        Write-Host "Warning: Extension ID '$cleanId' is $($cleanId.Length) characters (expected 32)." -ForegroundColor Red
+        Write-Host "Chrome Extension IDs must be exactly 32 lowercase letters (a-p)." -ForegroundColor Red
+    }
+
     $allowedOrigins = @("chrome-extension://$cleanId/")
 } else {
     $allowedOrigins = @("chrome-extension://EXTENSION_ID_HERE/")

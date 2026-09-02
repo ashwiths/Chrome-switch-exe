@@ -13,6 +13,7 @@ public class SlotConfigEntry
     public int Slot { get; set; }
     public string ProfileDirectory { get; set; } = string.Empty;
     public string? DisplayName { get; set; }
+    public string? Shortcut { get; set; }
 }
 
 public class SlotConfigManager
@@ -42,6 +43,10 @@ public class SlotConfigManager
                 {
                     foreach (var entry in list)
                     {
+                        if (string.IsNullOrEmpty(entry.Shortcut) && entry.Slot <= 5)
+                        {
+                            entry.Shortcut = $"Alt + Shift + {entry.Slot}";
+                        }
                         _slots[entry.Slot] = entry;
                     }
                     return;
@@ -53,22 +58,24 @@ public class SlotConfigManager
             }
         }
 
-        // Initialize default slot assignments from registered profiles
+        // Initialize default slot assignments from ALL registered profiles dynamically
         var known = detector.GetKnownProfiles();
-        for (int i = 0; i < Math.Min(5, known.Count); i++)
+        for (int i = 0; i < known.Count; i++)
         {
             var p = known[i];
-            _slots[i + 1] = new SlotConfigEntry
+            int slotNum = i + 1;
+            _slots[slotNum] = new SlotConfigEntry
             {
-                Slot = i + 1,
+                Slot = slotNum,
                 ProfileDirectory = p.DirectoryName,
-                DisplayName = p.DisplayName
+                DisplayName = p.DisplayName,
+                Shortcut = slotNum <= 4 ? $"Alt + Shift + {slotNum}" : null
             };
         }
 
         // Fallbacks if no profiles found
-        if (!_slots.ContainsKey(1)) _slots[1] = new SlotConfigEntry { Slot = 1, ProfileDirectory = "Default", DisplayName = "Default" };
-        if (!_slots.ContainsKey(2)) _slots[2] = new SlotConfigEntry { Slot = 2, ProfileDirectory = "Profile 1", DisplayName = "Slot 2" };
+        if (!_slots.ContainsKey(1)) _slots[1] = new SlotConfigEntry { Slot = 1, ProfileDirectory = "Default", DisplayName = "Default", Shortcut = "Alt + Shift + 1" };
+        if (!_slots.ContainsKey(2)) _slots[2] = new SlotConfigEntry { Slot = 2, ProfileDirectory = "Profile 1", DisplayName = "Slot 2", Shortcut = "Alt + Shift + 2" };
 
         SaveSlots();
     }
@@ -97,14 +104,45 @@ public class SlotConfigManager
         return _slots.Values.OrderBy(s => s.Slot).ToList();
     }
 
-    public void SetSlot(int slot, string profileDirectory, string? displayName = null)
+    public void SetSlot(int slot, string profileDirectory, string? displayName = null, string? shortcut = null)
     {
         _slots[slot] = new SlotConfigEntry
         {
             Slot = slot,
             ProfileDirectory = profileDirectory,
-            DisplayName = displayName
+            DisplayName = displayName,
+            Shortcut = shortcut ?? _slots.GetValueOrDefault(slot)?.Shortcut
         };
+        SaveSlots();
+    }
+
+    public void SetSlotShortcut(int slot, string? shortcut)
+    {
+        if (_slots.TryGetValue(slot, out var entry))
+        {
+            entry.Shortcut = shortcut;
+            SaveSlots();
+        }
+    }
+
+    public void SyncSlots(IEnumerable<SlotConfigEntry> updatedSlots)
+    {
+        foreach (var s in updatedSlots)
+        {
+            if (s.Slot >= 1 && s.Slot <= 50)
+            {
+                if (_slots.TryGetValue(s.Slot, out var existing))
+                {
+                    if (!string.IsNullOrEmpty(s.ProfileDirectory)) existing.ProfileDirectory = s.ProfileDirectory;
+                    if (!string.IsNullOrEmpty(s.DisplayName)) existing.DisplayName = s.DisplayName;
+                    existing.Shortcut = s.Shortcut;
+                }
+                else
+                {
+                    _slots[s.Slot] = s;
+                }
+            }
+        }
         SaveSlots();
     }
 }

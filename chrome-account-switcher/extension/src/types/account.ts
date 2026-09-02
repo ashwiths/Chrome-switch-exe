@@ -1,10 +1,9 @@
-// Profile and Slot type definitions
-
 export interface ProfileSlotConfig {
   slot: number;
   profileDirectory: string; // e.g. "Default", "Profile 1", "Profile 7"
   displayName?: string;
   email?: string;
+  shortcut?: string; // e.g. "Alt + Shift + 1", "Ctrl + Alt + 3", "Alt + 2"
 }
 
 export interface TabInfo {
@@ -15,12 +14,14 @@ export interface TabInfo {
 }
 
 export interface NativeSwitchRequest {
-  action: 'switch-profile';
+  action: 'switch-profile' | 'get-slots' | 'set-shortcut' | 'sync-slots' | 'ping';
   slot?: number;
   profileDirectory?: string;
   copyTabs?: boolean;
   sourceProfile?: string;
   tabs?: TabInfo[];
+  shortcut?: string;
+  slots?: ProfileSlotConfig[];
 }
 
 export interface NativeSwitchResponse {
@@ -34,6 +35,7 @@ export interface NativeSwitchResponse {
   windowHandle?: number;
   error?: string;
   message?: string;
+  slots?: ProfileSlotConfig[];
 }
 
 export interface NativeGetProfilesResponse {

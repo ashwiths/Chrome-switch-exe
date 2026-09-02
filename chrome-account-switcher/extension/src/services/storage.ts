@@ -5,17 +5,36 @@ export const NATIVE_HOST_NAME = 'com.chrome_account_switcher.helper';
 export const storageService = {
   getSlotConfigs: async (): Promise<ProfileSlotConfig[]> => {
     const res = await chrome.storage.local.get('profileSlots');
-    return (res.profileSlots as ProfileSlotConfig[]) || [
-      { slot: 1, profileDirectory: 'Default', displayName: 'Slot 1' },
-      { slot: 2, profileDirectory: 'Profile 7', displayName: 'Slot 2' },
-      { slot: 3, profileDirectory: 'Profile 2', displayName: 'Slot 3' },
-      { slot: 4, profileDirectory: 'Profile 1', displayName: 'Slot 4' },
-      { slot: 5, profileDirectory: 'Profile 3', displayName: 'Slot 5' }
+    const existing = res.profileSlots as ProfileSlotConfig[] | undefined;
+    if (existing && Array.isArray(existing) && existing.length > 0) {
+      // Ensure each slot has default shortcut if missing
+      return existing.map((s) => ({
+        ...s,
+        shortcut: s.shortcut !== undefined ? s.shortcut : (s.slot <= 5 ? `Alt + Shift + ${s.slot}` : undefined)
+      }));
+    }
+
+    const defaultSlots: ProfileSlotConfig[] = [
+      { slot: 1, profileDirectory: 'Default', displayName: 'Slot 1', shortcut: 'Alt + Shift + 1' },
+      { slot: 2, profileDirectory: 'Profile 7', displayName: 'Slot 2', shortcut: 'Alt + Shift + 2' },
+      { slot: 3, profileDirectory: 'Profile 2', displayName: 'Slot 3', shortcut: 'Alt + Shift + 3' },
+      { slot: 4, profileDirectory: 'Profile 1', displayName: 'Slot 4', shortcut: 'Alt + Shift + 4' },
+      { slot: 5, profileDirectory: 'Profile 3', displayName: 'Slot 5', shortcut: 'Alt + Shift + 5' }
     ];
+
+    await chrome.storage.local.set({ profileSlots: defaultSlots });
+    return defaultSlots;
   },
 
   setSlotConfigs: async (slots: ProfileSlotConfig[]): Promise<void> => {
     await chrome.storage.local.set({ profileSlots: slots });
+  },
+
+  updateSlotShortcut: async (slotNumber: number, shortcut?: string): Promise<ProfileSlotConfig[]> => {
+    const slots = await storageService.getSlotConfigs();
+    const updated = slots.map((s) => (s.slot === slotNumber ? { ...s, shortcut } : s));
+    await storageService.setSlotConfigs(updated);
+    return updated;
   },
 
   getLastStatus: async (): Promise<{ message: string; timestamp: number } | null> => {

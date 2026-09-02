@@ -82,10 +82,95 @@ public static class NativeMessageHost
 
         if (request.Action.Equals("ping", StringComparison.OrdinalIgnoreCase))
         {
+            var discovered = detector.RefreshProfiles(request.SourceProfile);
+            var currentProfile = discovered.FirstOrDefault(p => p.IsCurrent)?.DirectoryName;
+            var profileDtos = discovered.Select(p => new ChromeProfileDto
+            {
+                Directory = p.DirectoryName,
+                DisplayName = p.DisplayName,
+                GaiaName = p.GaiaName,
+                Email = p.Email,
+                AvatarIcon = p.AvatarIcon,
+                OrderIndex = p.OrderIndex,
+                IsCurrent = p.IsCurrent
+            }).ToList();
+
             return new NativeMessageResponse
             {
                 Success = true,
-                Message = "Chrome Account Switcher Native Host is online."
+                Message = "Chrome Account Switcher Native Host is online.",
+                Profiles = profileDtos,
+                CurrentProfile = currentProfile,
+                Slots = slotManager.GetAllSlots()
+            };
+        }
+
+        if (request.Action.Equals("getProfiles", StringComparison.OrdinalIgnoreCase) ||
+            request.Action.Equals("get-profiles", StringComparison.OrdinalIgnoreCase))
+        {
+            var discovered = detector.RefreshProfiles(request.SourceProfile);
+            var currentProfile = discovered.FirstOrDefault(p => p.IsCurrent)?.DirectoryName;
+            var profileDtos = discovered.Select(p => new ChromeProfileDto
+            {
+                Directory = p.DirectoryName,
+                DisplayName = p.DisplayName,
+                GaiaName = p.GaiaName,
+                Email = p.Email,
+                AvatarIcon = p.AvatarIcon,
+                OrderIndex = p.OrderIndex,
+                IsCurrent = p.IsCurrent
+            }).ToList();
+
+            return new NativeMessageResponse
+            {
+                Success = true,
+                Profiles = profileDtos,
+                CurrentProfile = currentProfile,
+                Slots = slotManager.GetAllSlots()
+            };
+        }
+
+        if (request.Action.Equals("get-slots", StringComparison.OrdinalIgnoreCase))
+        {
+            return new NativeMessageResponse
+            {
+                Success = true,
+                Slots = slotManager.GetAllSlots()
+            };
+        }
+
+        if (request.Action.Equals("set-shortcut", StringComparison.OrdinalIgnoreCase))
+        {
+            if (request.Slot.HasValue && request.Slot.Value >= 1 && request.Slot.Value <= 50)
+            {
+                slotManager.SetSlotShortcut(request.Slot.Value, request.Shortcut);
+                return new NativeMessageResponse
+                {
+                    Success = true,
+                    Message = $"Shortcut for Slot {request.Slot.Value} updated.",
+                    Slots = slotManager.GetAllSlots()
+                };
+            }
+
+            return new NativeMessageResponse
+            {
+                Success = false,
+                Error = "Invalid slot number provided for set-shortcut."
+            };
+        }
+
+        if (request.Action.Equals("sync-slots", StringComparison.OrdinalIgnoreCase))
+        {
+            if (request.Slots != null && request.Slots.Count > 0)
+            {
+                slotManager.SyncSlots(request.Slots);
+            }
+
+            return new NativeMessageResponse
+            {
+                Success = true,
+                Message = "Slots synchronized successfully.",
+                Slots = slotManager.GetAllSlots()
             };
         }
 
@@ -94,17 +179,14 @@ public static class NativeMessageHost
             string? targetDirectory = null;
             string? targetDisplayName = null;
 
-            if (request.Slot.HasValue)
+            if (!string.IsNullOrWhiteSpace(request.ProfileDirectory))
             {
-                if (request.Slot.Value < 1 || request.Slot.Value > 10)
-                {
-                    return new NativeMessageResponse
-                    {
-                        Success = false,
-                        Error = $"Invalid slot number: {request.Slot.Value}. Must be between 1 and 10."
-                    };
-                }
-
+                targetDirectory = request.ProfileDirectory;
+                var known = detector.GetProfileByDirectory(targetDirectory);
+                targetDisplayName = known?.DisplayName;
+            }
+            else if (request.Slot.HasValue)
+            {
                 var slotEntry = slotManager.GetSlot(request.Slot.Value);
                 if (slotEntry == null || string.IsNullOrWhiteSpace(slotEntry.ProfileDirectory))
                 {
@@ -116,10 +198,6 @@ public static class NativeMessageHost
                 }
                 targetDirectory = slotEntry.ProfileDirectory;
                 targetDisplayName = slotEntry.DisplayName;
-            }
-            else if (!string.IsNullOrWhiteSpace(request.ProfileDirectory))
-            {
-                targetDirectory = request.ProfileDirectory;
             }
             else
             {

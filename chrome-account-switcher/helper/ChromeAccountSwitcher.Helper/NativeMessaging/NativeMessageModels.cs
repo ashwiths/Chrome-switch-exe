@@ -34,6 +34,39 @@ public class NativeMessageRequest
 
     [JsonPropertyName("tabs")]
     public List<TabItemDto>? Tabs { get; set; }
+
+    [JsonPropertyName("shortcut")]
+    public string? Shortcut { get; set; }
+
+    [JsonPropertyName("slots")]
+    public List<SlotConfigEntry>? Slots { get; set; }
+}
+
+public class ChromeProfileDto
+{
+    [JsonPropertyName("directory")]
+    public string Directory { get; set; } = string.Empty;
+
+    [JsonPropertyName("displayName")]
+    public string DisplayName { get; set; } = string.Empty;
+
+    [JsonPropertyName("gaiaName")]
+    public string? GaiaName { get; set; }
+
+    [JsonPropertyName("email")]
+    public string? Email { get; set; }
+
+    [JsonPropertyName("avatarIcon")]
+    public string? AvatarIcon { get; set; }
+
+    [JsonPropertyName("orderIndex")]
+    public int OrderIndex { get; set; }
+
+    [JsonPropertyName("isCurrent")]
+    public bool IsCurrent { get; set; }
+
+    [JsonPropertyName("shortcut")]
+    public string? Shortcut { get; set; }
 }
 
 public class NativeMessageResponse
@@ -67,4 +100,13 @@ public class NativeMessageResponse
 
     [JsonPropertyName("message")]
     public string? Message { get; set; }
+
+    [JsonPropertyName("slots")]
+    public IReadOnlyList<SlotConfigEntry>? Slots { get; set; }
+
+    [JsonPropertyName("profiles")]
+    public List<ChromeProfileDto>? Profiles { get; set; }
+
+    [JsonPropertyName("currentProfile")]
+    public string? CurrentProfile { get; set; }
 }

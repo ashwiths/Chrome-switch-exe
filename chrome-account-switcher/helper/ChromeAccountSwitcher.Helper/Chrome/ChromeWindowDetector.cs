@@ -22,6 +22,35 @@ public class ChromeWindowDetector
     /// <summary>
     /// Reads Chrome's Local State file from disk to get registered profiles and their display names.
     /// </summary>
+    public IReadOnlyList<ChromeProfileInfo> RefreshProfiles(string? currentProfile = null)
+    {
+        LoadKnownChromeProfiles();
+
+        if (string.IsNullOrEmpty(currentProfile))
+        {
+            try
+            {
+                var windows = DetectChromeWindows(out _);
+                var focused = windows.FirstOrDefault(w => w.IsFocused && w.IsNormalBrowserWindow);
+                currentProfile = focused?.ProfileDirectory;
+            }
+            catch
+            {
+                // Ignore
+            }
+        }
+
+        if (!string.IsNullOrEmpty(currentProfile))
+        {
+            foreach (var p in _knownProfiles)
+            {
+                p.IsCurrent = p.DirectoryName.Equals(currentProfile, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        return _knownProfiles;
+    }
+
     private void LoadKnownChromeProfiles()
     {
         try
@@ -42,16 +71,39 @@ public class ChromeWindowDetector
             {
                 string userDataDir = Path.Combine(localAppData, "Google", "Chrome", "User Data");
 
+                var orderMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                if (profileElem.TryGetProperty("profiles_order", out var orderElem) && orderElem.ValueKind == JsonValueKind.Array)
+                {
+                    int idx = 0;
+                    foreach (var item in orderElem.EnumerateArray())
+                    {
+                        string? dir = item.GetString();
+                        if (!string.IsNullOrEmpty(dir))
+                        {
+                            orderMap[dir] = idx++;
+                        }
+                    }
+                }
+
+                _knownProfiles.Clear();
+                _profilesByDirectory.Clear();
+
                 foreach (var prop in infoCacheElem.EnumerateObject())
                 {
                     string dirKey = prop.Name; // e.g. "Default", "Profile 1", "Profile 2"
                     string name = string.Empty;
+                    string? gaiaName = null;
                     string? email = null;
                     string? shortcutName = null;
+                    string? avatarIcon = null;
 
                     if (prop.Value.TryGetProperty("name", out var nameProp))
                     {
                         name = nameProp.GetString() ?? string.Empty;
+                    }
+                    if (prop.Value.TryGetProperty("gaia_name", out var gaiaProp))
+                    {
+                        gaiaName = gaiaProp.GetString();
                     }
                     if (prop.Value.TryGetProperty("user_name", out var userProp))
                     {
@@ -61,19 +113,35 @@ public class ChromeWindowDetector
                     {
                         shortcutName = scProp.GetString();
                     }
+                    if (prop.Value.TryGetProperty("avatar_icon", out var avProp))
+                    {
+                        avatarIcon = avProp.GetString();
+                    }
+
+                    int orderIndex = orderMap.TryGetValue(dirKey, out int ord) ? ord : 999;
 
                     var profile = new ChromeProfileInfo
                     {
                         DirectoryName = dirKey,
-                        DisplayName = string.IsNullOrWhiteSpace(name) ? dirKey : name,
+                        DisplayName = string.IsNullOrWhiteSpace(name) ? (gaiaName ?? dirKey) : name,
+                        GaiaName = gaiaName,
                         Email = email,
                         FullPath = Path.Combine(userDataDir, dirKey),
-                        ShortcutName = shortcutName
+                        ShortcutName = shortcutName,
+                        AvatarIcon = avatarIcon,
+                        OrderIndex = orderIndex
                     };
 
                     _knownProfiles.Add(profile);
                     _profilesByDirectory[dirKey] = profile;
                 }
+
+                // Sort by Chrome's user profiles_order, then by directory name
+                _knownProfiles.Sort((a, b) =>
+                {
+                    int cmp = a.OrderIndex.CompareTo(b.OrderIndex);
+                    return cmp != 0 ? cmp : string.Compare(a.DirectoryName, b.DirectoryName, StringComparison.OrdinalIgnoreCase);
+                });
             }
         }
         catch (Exception ex)

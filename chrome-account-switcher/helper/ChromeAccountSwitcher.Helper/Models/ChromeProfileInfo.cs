@@ -21,6 +21,11 @@ public class ChromeProfileInfo
     public string? Email { get; set; }
 
     /// <summary>
+    /// Full name from Google Account (gaia_name).
+    /// </summary>
+    public string? GaiaName { get; set; }
+
+    /// <summary>
     /// Full path to the profile directory on disk.
     /// </summary>
     public string? FullPath { get; set; }
@@ -29,4 +34,19 @@ public class ChromeProfileInfo
     /// Shortcut name if available.
     /// </summary>
     public string? ShortcutName { get; set; }
+
+    /// <summary>
+    /// Avatar icon resource string or URL if available.
+    /// </summary>
+    public string? AvatarIcon { get; set; }
+
+    /// <summary>
+    /// Profile order index from profiles_order.
+    /// </summary>
+    public int OrderIndex { get; set; }
+
+    /// <summary>
+    /// Whether this profile belongs to the currently focused Chrome window.
+    /// </summary>
+    public bool IsCurrent { get; set; }
 }

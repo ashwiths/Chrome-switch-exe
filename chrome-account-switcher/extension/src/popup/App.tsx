@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import './popup.css';
 import { storageService, sendNativeMessage } from '../services/storage';
 import { ProfileSlotConfig } from '../types/account';
+import { ShortcutModal } from '../components/ShortcutModal';
 
 export const App: React.FC = () => {
   const [slots, setSlots] = useState<ProfileSlotConfig[]>([]);
@@ -9,6 +10,7 @@ export const App: React.FC = () => {
   const [loadingSlot, setLoadingSlot] = useState<number | null>(null);
   const [hostStatus, setHostStatus] = useState<'checking' | 'connected' | 'error'>('checking');
   const [hostError, setHostError] = useState<string>('');
+  const [editingSlot, setEditingSlot] = useState<ProfileSlotConfig | null>(null);
 
   const loadData = async () => {
     const loadedSlots = await storageService.getSlotConfigs();
@@ -19,11 +21,13 @@ export const App: React.FC = () => {
       setLastStatus(savedStatus.message);
     }
 
-    // Ping native helper
+    // Ping native helper and sync slot config
     const pingRes = await sendNativeMessage({ action: 'ping' });
     if (pingRes.success) {
       setHostStatus('connected');
       setHostError('');
+      // Sync slots with native helper
+      sendNativeMessage({ action: 'sync-slots', slots: loadedSlots });
     } else {
       setHostStatus('error');
       setHostError(pingRes.error || 'Native helper not reachable');
@@ -85,6 +89,24 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleSaveShortcut = async (slotNumber: number, shortcut?: string) => {
+    const updated = await storageService.updateSlotShortcut(slotNumber, shortcut);
+    setSlots(updated);
+
+    // Sync with native helper
+    await sendNativeMessage({
+      action: 'set-shortcut',
+      slot: slotNumber,
+      shortcut
+    });
+
+    const statusMsg = shortcut
+      ? `Slot ${slotNumber} shortcut updated to '${shortcut}'.`
+      : `Slot ${slotNumber} shortcut cleared.`;
+    setLastStatus(statusMsg);
+    await storageService.setLastStatus(statusMsg);
+  };
+
   return (
     <div className="popup-container">
       <header className="header">
@@ -129,34 +151,51 @@ export const App: React.FC = () => {
               <div className="slot-info">
                 <div className="slot-badge-row">
                   <span className="slot-badge">Slot {item.slot}</span>
-                  {item.slot <= 4 ? (
-                    <span className="shortcut-badge">Alt + Shift + {item.slot}</span>
-                  ) : (
-                    <span className="shortcut-badge click-badge">Click / Popup</span>
-                  )}
+                  <span className={`shortcut-badge ${item.shortcut ? '' : 'click-badge'}`}>
+                    {item.shortcut || 'Not Assigned'}
+                  </span>
                 </div>
                 <div className="slot-details">
                   <span className="profile-dir">{item.profileDirectory}</span>
                   {item.displayName && <span className="profile-name">({item.displayName})</span>}
                 </div>
               </div>
-              <button
-                className="btn-switch"
-                disabled={loadingSlot === item.slot || hostStatus !== 'connected'}
-                onClick={() => handleTriggerSlot(item.slot)}
-              >
-                {loadingSlot === item.slot ? 'Focusing...' : 'Switch'}
-              </button>
+              <div className="slot-actions">
+                <button
+                  className="btn-custom-key"
+                  onClick={() => setEditingSlot(item)}
+                  title="Configure custom keyboard shortcut"
+                >
+                  Custom Key
+                </button>
+                <button
+                  className="btn-switch"
+                  disabled={loadingSlot === item.slot || hostStatus !== 'connected'}
+                  onClick={() => handleTriggerSlot(item.slot)}
+                >
+                  {loadingSlot === item.slot ? 'Focusing...' : 'Switch'}
+                </button>
+              </div>
             </div>
           ))}
         </div>
       </section>
 
       <footer className="footer-note">
-        <span>Use <strong>Alt + Shift + 1..4</strong> or click any slot to switch instantly.</span>
+        <span>Use configured shortcuts or click <strong>Switch</strong> to change profile.</span>
       </footer>
+
+      {editingSlot && (
+        <ShortcutModal
+          slot={editingSlot}
+          allSlots={slots}
+          onSave={handleSaveShortcut}
+          onClose={() => setEditingSlot(null)}
+        />
+      )}
     </div>
   );
 };
 
 export default App;
+
