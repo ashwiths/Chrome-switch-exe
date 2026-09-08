@@ -13,6 +13,70 @@
   "permissions": [
     "nativeMessaging",
     "storage",
-    "tabs"
-  ]
+    "tabs",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
+  "commands": {
+    "switch-slot-1": {
+      "suggested_key": {
+        "default": "Alt+1",
+        "windows": "Alt+1",
+        "mac": "Alt+1"
+      },
+      "description": "Switch to Profile Slot 1"
+    },
+    "switch-slot-2": {
+      "suggested_key": {
+        "default": "Alt+2",
+        "windows": "Alt+2",
+        "mac": "Alt+2"
+      },
+      "description": "Switch to Profile Slot 2"
+    },
+    "switch-slot-3": {
+      "suggested_key": {
+        "default": "Alt+3",
+        "windows": "Alt+3",
+        "mac": "Alt+3"
+      },
+      "description": "Switch to Profile Slot 3"
+    },
+    "switch-slot-4": {
+      "suggested_key": {
+        "default": "Alt+4",
+        "windows": "Alt+4",
+        "mac": "Alt+4"
+      },
+      "description": "Switch to Profile Slot 4"
+    },
+    "switch-slot-5": {
+      "description": "Switch to Profile Slot 5"
+    },
+    "switch-slot-6": {
+      "description": "Switch to Profile Slot 6"
+    },
+    "switch-slot-7": {
+      "description": "Switch to Profile Slot 7"
+    },
+    "switch-slot-8": {
+      "description": "Switch to Profile Slot 8"
+    },
+    "switch-slot-9": {
+      "description": "Switch to Profile Slot 9"
+    },
+    "switch-slot-10": {
+      "description": "Switch to Profile Slot 10"
+    }
+  }
 }

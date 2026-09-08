@@ -22,8 +22,24 @@ public static class NativeMessageHost
     public static void Run(ChromeWindowDetector detector, SlotConfigManager slotManager)
     {
         Log("NativeMessageHost.Run started");
-        using Stream inStream = Console.OpenStandardInput();
-        using Stream outStream = Console.OpenStandardOutput();
+
+        EnsureDaemonRunning();
+
+        GlobalKeyboardHook? hook = null;
+        try
+        {
+            hook = new GlobalKeyboardHook(detector, slotManager);
+            hook.Start();
+            Log("GlobalKeyboardHook initialized within NativeMessageHost");
+        }
+        catch (Exception ex)
+        {
+            Log($"Failed to start GlobalKeyboardHook in NativeMessageHost: {ex.Message}");
+        }
+
+        using (hook)
+        using (Stream inStream = Console.OpenStandardInput())
+        using (Stream outStream = Console.OpenStandardOutput())
 
         while (true)
         {
@@ -105,6 +121,40 @@ public static class NativeMessageHost
             readTotal += read;
         }
         return true;
+    }
+
+    private static void EnsureDaemonRunning()
+    {
+        try
+        {
+            int currentPid = Environment.ProcessId;
+            bool daemonRunning = Process.GetProcessesByName("ChromeAccountSwitcher.Helper")
+                .Any(p => p.Id != currentPid);
+
+            if (!daemonRunning)
+            {
+                string exePath = Environment.ProcessPath ??
+                    Path.Combine(AppContext.BaseDirectory, "ChromeAccountSwitcher.Helper.exe");
+
+                if (File.Exists(exePath))
+                {
+                    var psi = new ProcessStartInfo
+                    {
+                        FileName = exePath,
+                        Arguments = "--listen-hotkeys",
+                        UseShellExecute = true,
+                        WindowStyle = ProcessWindowStyle.Hidden,
+                        CreateNoWindow = true
+                    };
+                    Process.Start(psi);
+                    Log("Started detached background hotkey daemon via EnsureDaemonRunning.");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"EnsureDaemonRunning failed: {ex.Message}");
+        }
     }
 
     public static NativeMessageResponse HandleRequest(

@@ -79,6 +79,25 @@ if (-not (Test-Path $regPath)) {
 
 Set-ItemProperty -Path $regPath -Name "(default)" -Value $fullManifestPath
 
+# Configure auto-start for global keyboard shortcuts daemon via User Startup folder
+try {
+    $startupFile = Join-Path "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup" "ChromeAccountSwitcherDaemon.vbs"
+    $vbsContent = "Set WshShell = CreateObject(""Wscript.Shell"")`r`nWshShell.Run """"""$fullExePath"""" --listen-hotkeys"", 0, False`r`n"
+    [System.IO.File]::WriteAllText($startupFile, $vbsContent)
+    Write-Host "Auto-start configured in User Startup folder." -ForegroundColor Green
+} catch {
+    Write-Host "Note: Could not create startup shortcut: $($_.Exception.Message)" -ForegroundColor Yellow
+}
+
+# Ensure background daemon is running
+$daemonProcess = Get-Process -Name "ChromeAccountSwitcher.Helper" -ErrorAction SilentlyContinue
+if (-not $daemonProcess) {
+    Start-Process -FilePath $fullExePath -ArgumentList "--listen-hotkeys" -WindowStyle Hidden
+    Write-Host "Started Global Hotkey Daemon in background." -ForegroundColor Green
+} else {
+    Write-Host "Global Hotkey Daemon is already active." -ForegroundColor Green
+}
+
 Write-Host "==========================================================" -ForegroundColor Green
 Write-Host " Native Messaging Host Registered Successfully!" -ForegroundColor Green
 Write-Host "==========================================================" -ForegroundColor Green
@@ -86,6 +105,7 @@ Write-Host "Host Name:     $hostName"
 Write-Host "Manifest Path: $fullManifestPath"
 Write-Host "Binary Path:   $fullExePath"
 Write-Host "Registry Key:  $regPath"
+Write-Host "Startup Hook:  $startupFile" -ForegroundColor Green
 if ($ExtensionId -ne "") {
     Write-Host "Allowed Origin: chrome-extension://$cleanId/" -ForegroundColor Green
 } else {

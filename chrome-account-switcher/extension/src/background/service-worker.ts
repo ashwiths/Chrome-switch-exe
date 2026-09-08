@@ -1,9 +1,60 @@
-import { sendNativeMessage, storageService } from '../services/storage';
+import { sendNativeMessage, storageService, NATIVE_HOST_NAME } from '../services/storage';
 import { TabInfo } from '../types/account';
 
 console.log(`[Background] Chrome Account Switcher service worker initialized. Extension ID: ${chrome.runtime.id}`);
 
-// Chrome commands listener removed in favor of Windows Low-Level Hook (WH_KEYBOARD_LL) daemon
+// Maintain persistent native messaging port connection so helper stays online even when popup is closed
+let persistentPort: chrome.runtime.Port | null = null;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+function connectPersistentNativePort() {
+  if (persistentPort) return;
+  try {
+    persistentPort = chrome.runtime.connectNative(NATIVE_HOST_NAME);
+    console.log('[Background] Persistent native connection established.');
+
+    persistentPort.onMessage.addListener((msg) => {
+      console.log('[Background] Native host response:', msg);
+    });
+
+    persistentPort.onDisconnect.addListener(() => {
+      const err = chrome.runtime.lastError?.message || 'Disconnected';
+      console.warn('[Background] Persistent native port disconnected:', err);
+      persistentPort = null;
+      if (!reconnectTimer) {
+        reconnectTimer = setTimeout(() => {
+          reconnectTimer = null;
+          connectPersistentNativePort();
+        }, 2000);
+      }
+    });
+
+    // Send initial ping to verify connection and start hook
+    persistentPort.postMessage({ action: 'ping' });
+  } catch (err) {
+    console.error('[Background] Failed to connect native port:', err);
+    if (!reconnectTimer) {
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        connectPersistentNativePort();
+      }, 3000);
+    }
+  }
+}
+
+connectPersistentNativePort();
+
+// Listen for keyboard shortcut commands from Chrome Commands API
+chrome.commands.onCommand.addListener(async (command: string) => {
+  console.log(`[Background] Chrome Command received: ${command}`);
+
+  if (command.startsWith('switch-slot-')) {
+    const slotNumber = parseInt(command.replace('switch-slot-', ''), 10);
+    if (!isNaN(slotNumber) && slotNumber >= 1 && slotNumber <= 10) {
+      await handleSwitchSlot(slotNumber);
+    }
+  }
+});
 
 // Handle slot or profile directory switching via native messaging with tab copying
 export async function handleSwitchSlot(slotNumber: number, profileDirectory?: string) {
@@ -13,7 +64,10 @@ export async function handleSwitchSlot(slotNumber: number, profileDirectory?: st
   let skippedCount = 0;
 
   try {
-    const currentTabs = await chrome.tabs.query({ currentWindow: true, lastFocusedWindow: true });
+    let currentTabs = await chrome.tabs.query({ lastFocusedWindow: true });
+    if (!currentTabs || currentTabs.length === 0) {
+      currentTabs = await chrome.tabs.query({ active: true });
+    }
     for (const tab of currentTabs) {
       if (tab.url && (tab.url.startsWith('http://') || tab.url.startsWith('https://'))) {
         validTabs.push({
@@ -84,5 +138,35 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 });
 
-// Service worker ready for native messaging and popup events
+// Auto-inject content script into open tabs on install/reload/startup
+async function injectContentScriptIntoExistingTabs() {
+  try {
+    const tabs = await chrome.tabs.query({ url: ['http://*/*', 'https://*/*'] });
+    for (const tab of tabs) {
+      if (tab.id) {
+        chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          files: ['content.js']
+        }).catch(() => {});
+      }
+    }
+  } catch (err) {
+    // Ignore permissions or restricted tabs
+  }
+}
+
+chrome.runtime.onInstalled.addListener(() => {
+  injectContentScriptIntoExistingTabs();
+  storageService.getSlotConfigs().catch(() => {});
+});
+
+chrome.runtime.onStartup.addListener(() => {
+  injectContentScriptIntoExistingTabs();
+  storageService.getSlotConfigs().catch(() => {});
+});
+
+// Warm up slot configs and inject content script on service worker startup
+storageService.getSlotConfigs().catch(() => {});
+injectContentScriptIntoExistingTabs().catch(() => {});
+
 

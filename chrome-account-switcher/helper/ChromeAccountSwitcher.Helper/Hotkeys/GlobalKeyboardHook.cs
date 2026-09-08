@@ -332,10 +332,39 @@ public class GlobalKeyboardHook : IDisposable
 
                 uint currentMods = (alt ? 1u : 0u) | (ctrl ? 2u : 0u) | (shift ? 4u : 0u) | (win ? 8u : 0u);
 
+                // Diagnostic log for keypresses with modifiers
+                char keyChar = (vk >= 0x30 && vk <= 0x39) || (vk >= 0x41 && vk <= 0x5A) ? (char)vk : ' ';
+                string dbgMsg = $"[Hook Callback] VK=0x{vk:X2} ('{keyChar}') Msg=0x{msg:X4} Alt={alt} Ctrl={ctrl} Shift={shift} Win={win} Mods=0x{currentMods:X2}";
+                Console.Error.WriteLine(dbgMsg);
+                try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "chrome_switcher_hook.log"), $"[{DateTime.Now:HH:mm:ss.fff}] {dbgMsg}\r\n"); } catch { }
+
                 SlotConfigEntry? targetSlot = null;
                 lock (_lock)
                 {
-                    _activeMap.TryGetValue((currentMods, vk), out targetSlot);
+                    // 1. Direct match
+                    if (!_activeMap.TryGetValue((currentMods, vk), out targetSlot))
+                    {
+                        // 2. Numpad fallback (VK_NUMPAD0..9 -> '0'..'9')
+                        if (vk >= 0x60 && vk <= 0x69)
+                        {
+                            uint digitVk = vk - 0x30;
+                            _activeMap.TryGetValue((currentMods, digitVk), out targetSlot);
+                        }
+                    }
+
+                    // 3. If exact mods didn't match, check if Alt alone matches
+                    if (targetSlot == null && alt)
+                    {
+                        uint altOnly = 1u;
+                        if (!_activeMap.TryGetValue((altOnly, vk), out targetSlot))
+                        {
+                            if (vk >= 0x60 && vk <= 0x69)
+                            {
+                                uint digitVk = vk - 0x30;
+                                _activeMap.TryGetValue((altOnly, digitVk), out targetSlot);
+                            }
+                        }
+                    }
                 }
 
                 if (targetSlot != null)

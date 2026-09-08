@@ -110,10 +110,11 @@
         const key = i <= 9 ? `Alt + ${i}` : 'Alt + 0';
         const norm = normalizeShortcut(key);
         if (!map[norm]) {
-          // If not configured, map to corresponding slot directory from profileSlots if available
           const matchingSlot = data.profileSlots?.[i - 1];
           if (matchingSlot) {
             map[norm] = { directory: matchingSlot.profileDirectory, slot: matchingSlot.slot };
+          } else {
+            map[norm] = { directory: '', slot: i };
           }
         }
       }
@@ -134,12 +135,19 @@
     }
   });
 
+  let lastTriggerTime = 0;
+
   // Window keydown listener (capture phase)
   window.addEventListener(
     'keydown',
     (e: KeyboardEvent) => {
       // Must have Alt or Ctrl modifier
       if (!e.altKey && !e.ctrlKey) {
+        return;
+      }
+
+      // Ignore repeat events while holding key
+      if (e.repeat) {
         return;
       }
 
@@ -151,8 +159,9 @@
       if (isInput && !e.altKey) {
         return;
       }
+
       const formatted = formatKeyboardEvent(e);
-      if (formatted.isModifierOnly) {
+      if (formatted.isModifierOnly || !formatted.primaryKey) {
         return;
       }
 
@@ -160,6 +169,12 @@
       const target = activeShortcuts[norm];
 
       if (target) {
+        const now = Date.now();
+        if (now - lastTriggerTime < 400) {
+          return;
+        }
+        lastTriggerTime = now;
+
         console.log(`[Chrome Switcher] TRIGGERED: ${formatted.combination} -> Slot ${target.slot} (${target.directory})`);
         e.preventDefault();
         e.stopPropagation();

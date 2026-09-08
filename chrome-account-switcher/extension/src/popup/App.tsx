@@ -3,6 +3,7 @@ import './popup.css';
 import { storageService, sendNativeMessage } from '../services/storage';
 import { ProfileSlotConfig } from '../types/account';
 import { ShortcutModal } from '../components/ShortcutModal';
+import { formatKeyboardEvent, normalizeShortcut } from '../utils/shortcutValidator';
 
 const getAvatarGradient = (dir: string) => {
   let hash = 0;
@@ -137,6 +138,40 @@ export const App: React.FC = () => {
       setLoadingSlot(null);
     }
   };
+
+  // Keyboard shortcut listener within popup
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't intercept when user is recording custom shortcut in modal
+      if (editingSlot) return;
+
+      // Don't intercept when typing in search input unless Alt is held
+      const isInput =
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement;
+      if (isInput && !e.altKey) return;
+
+      if (!e.altKey && !e.ctrlKey) return;
+      if (e.repeat) return;
+
+      const formatted = formatKeyboardEvent(e);
+      if (formatted.isModifierOnly || !formatted.primaryKey) return;
+
+      const norm = normalizeShortcut(formatted.combination);
+      const matched = slots.find((s) => s.shortcut && normalizeShortcut(s.shortcut) === norm);
+
+      if (matched) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleTriggerSlot(matched.slot, matched.profileDirectory);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true);
+    };
+  }, [slots, editingSlot, loadingSlot]);
 
   const handleSaveShortcut = async (slotNumber: number, shortcut?: string) => {
     const updated = await storageService.updateSlotShortcut(slotNumber, shortcut);
