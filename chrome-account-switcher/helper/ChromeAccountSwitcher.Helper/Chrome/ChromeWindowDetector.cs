@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using ChromeAccountSwitcher.Helper.Models;
+using ChromeAccountSwitcher.Helper.NativeMessaging;
 using ChromeAccountSwitcher.Helper.Windows;
 
 namespace ChromeAccountSwitcher.Helper.Chrome;
@@ -21,18 +22,130 @@ public class ChromeWindowDetector
 
     /// <summary>
     /// Reads Chrome's Local State file from disk to get registered profiles and their display names.
+    /// Resolves the current active profile by probe token, active tabs, email, LevelDB write time, focused window, or session recency.
     /// </summary>
-    public IReadOnlyList<ChromeProfileInfo> RefreshProfiles(string? currentProfile = null)
+    public IReadOnlyList<ChromeProfileInfo> RefreshProfiles(
+        string? currentProfile = null,
+        string? currentEmail = null,
+        string? probeToken = null,
+        List<TabItemDto>? currentTabs = null)
     {
         LoadKnownChromeProfiles();
 
+        // 1. HIGHEST PRIORITY: Probe Token matching against each profile's LevelDB storage.
+        // When the extension popup opens, it writes a unique probe token to its local storage.
+        // LevelDB immediately writes it to disk in that profile's Local Extension Settings directory.
+        if (!string.IsNullOrWhiteSpace(probeToken))
+        {
+            string? probedDir = FindProfileByProbeToken(probeToken.Trim());
+            if (!string.IsNullOrEmpty(probedDir))
+            {
+                currentProfile = probedDir;
+            }
+        }
+
+        // 2. Open Tab Signatures: inspect tab titles / URLs for known profile email or Gaia Name
+        if (string.IsNullOrEmpty(currentProfile) && currentTabs != null && currentTabs.Count > 0)
+        {
+            foreach (var tab in currentTabs)
+            {
+                string combined = $"{tab.Title} {tab.Url}";
+                if (string.IsNullOrWhiteSpace(combined)) continue;
+
+                var match = _knownProfiles.FirstOrDefault(p =>
+                    (!string.IsNullOrWhiteSpace(p.Email) && combined.IndexOf(p.Email, StringComparison.OrdinalIgnoreCase) >= 0) ||
+                    (!string.IsNullOrWhiteSpace(p.GaiaName) && combined.IndexOf(p.GaiaName, StringComparison.OrdinalIgnoreCase) >= 0));
+
+                if (match != null)
+                {
+                    currentProfile = match.DirectoryName;
+                    break;
+                }
+            }
+        }
+
+        // 3. Match by genuinely detected active user email
+        if (string.IsNullOrEmpty(currentProfile) && !string.IsNullOrWhiteSpace(currentEmail))
+        {
+            var match = _knownProfiles.FirstOrDefault(p =>
+                !string.IsNullOrWhiteSpace(p.Email) &&
+                string.Equals(p.Email, currentEmail.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (match != null)
+            {
+                currentProfile = match.DirectoryName;
+            }
+        }
+
+        // 4. High-precision LevelDB probe: Find which profile directory's extension storage was active
+        if (string.IsNullOrEmpty(currentProfile))
+        {
+            string? extDir = DetectActiveProfileFromExtensionStorage();
+            if (!string.IsNullOrEmpty(extDir))
+            {
+                currentProfile = extDir;
+            }
+        }
+
+        // 5. If still unresolved, try to detect from focused window
         if (string.IsNullOrEmpty(currentProfile))
         {
             try
             {
                 var windows = DetectChromeWindows(out _);
                 var focused = windows.FirstOrDefault(w => w.IsFocused && w.IsNormalBrowserWindow);
-                currentProfile = focused?.ProfileDirectory;
+                if (!string.IsNullOrEmpty(focused?.ProfileDirectory))
+                {
+                    currentProfile = focused.ProfileDirectory;
+                }
+            }
+            catch
+            {
+                // Ignore
+            }
+        }
+
+        // 6. If still unresolved, detect by most recent Chrome profile session activity
+        if (string.IsNullOrEmpty(currentProfile))
+        {
+            try
+            {
+                string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                string userDataDir = Path.Combine(localAppData, "Google", "Chrome", "User Data");
+                if (Directory.Exists(userDataDir))
+                {
+                    DateTime latestWrite = DateTime.MinValue;
+                    string? bestDir = null;
+
+                    foreach (var p in _knownProfiles)
+                    {
+                        string profPath = Path.Combine(userDataDir, p.DirectoryName);
+                        string sessionsPath = Path.Combine(profPath, "Sessions");
+                        DateTime profLatest = DateTime.MinValue;
+
+                        if (Directory.Exists(sessionsPath))
+                        {
+                            var files = new DirectoryInfo(sessionsPath).GetFiles();
+                            foreach (var f in files)
+                            {
+                                if (f.LastWriteTimeUtc > profLatest)
+                                {
+                                    profLatest = f.LastWriteTimeUtc;
+                                }
+                            }
+                        }
+
+                        if (profLatest > latestWrite)
+                        {
+                            latestWrite = profLatest;
+                            bestDir = p.DirectoryName;
+                        }
+                    }
+
+                    if (!string.IsNullOrEmpty(bestDir) && (DateTime.UtcNow - latestWrite).TotalHours < 24)
+                    {
+                        currentProfile = bestDir;
+                    }
+                }
             }
             catch
             {
@@ -49,6 +162,80 @@ public class ChromeWindowDetector
         }
 
         return _knownProfiles;
+    }
+
+    /// <summary>
+    /// Scans LevelDB log and ldb files in all profile Local Extension Settings directories
+    /// to find which profile directory contains the probe token written by the extension.
+    /// </summary>
+    public string? FindProfileByProbeToken(string token, string extensionId = "bmjceikfkiikbdhcolbljfaehbghamlf")
+    {
+        if (string.IsNullOrWhiteSpace(token)) return null;
+
+        try
+        {
+            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            string userDataDir = Path.Combine(localAppData, "Google", "Chrome", "User Data");
+            if (!Directory.Exists(userDataDir)) return null;
+
+            byte[] tokenBytes = System.Text.Encoding.UTF8.GetBytes(token);
+
+            foreach (var profile in _knownProfiles)
+            {
+                string extSettingsDir = Path.Combine(userDataDir, profile.DirectoryName, "Local Extension Settings", extensionId);
+                if (!Directory.Exists(extSettingsDir)) continue;
+
+                var dirInfo = new DirectoryInfo(extSettingsDir);
+                var files = dirInfo.GetFiles()
+                    .Where(f => f.Name.EndsWith(".log", StringComparison.OrdinalIgnoreCase) || f.Name.EndsWith(".ldb", StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(f => f.LastWriteTimeUtc);
+
+                foreach (var file in files)
+                {
+                    try
+                    {
+                        using var stream = new FileStream(file.FullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                        using var ms = new MemoryStream();
+                        stream.CopyTo(ms);
+                        byte[] data = ms.ToArray();
+
+                        if (ContainsBytes(data, tokenBytes))
+                        {
+                            return profile.DirectoryName;
+                        }
+                    }
+                    catch
+                    {
+                        // Ignore file locking/access issues
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"FindProfileByProbeToken error: {ex.Message}");
+        }
+
+        return null;
+    }
+
+    private static bool ContainsBytes(byte[] source, byte[] pattern)
+    {
+        if (pattern.Length == 0 || source.Length < pattern.Length) return false;
+        for (int i = 0; i <= source.Length - pattern.Length; i++)
+        {
+            bool match = true;
+            for (int j = 0; j < pattern.Length; j++)
+            {
+                if (source[i + j] != pattern[j])
+                {
+                    match = false;
+                    break;
+                }
+            }
+            if (match) return true;
+        }
+        return false;
     }
 
     private void LoadKnownChromeProfiles()
@@ -310,6 +497,54 @@ public class ChromeWindowDetector
         {
             window.ProfileDisplayName = directoryName;
             window.ProfileEmail = null;
+        }
+    }
+
+    /// <summary>
+    /// Detects which Chrome profile directory hosts the calling extension instance
+    /// by finding which profile's Local Extension Settings directory was most recently written to.
+    /// Each Chrome profile maintains an isolated LevelDB on disk for the extension.
+    /// </summary>
+    public string? DetectActiveProfileFromExtensionStorage(string extensionId = "bmjceikfkiikbdhcolbljfaehbghamlf")
+    {
+        try
+        {
+            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            string userDataDir = Path.Combine(localAppData, "Google", "Chrome", "User Data");
+            if (!Directory.Exists(userDataDir)) return null;
+
+            DateTime latestWrite = DateTime.MinValue;
+            string? bestProfile = null;
+
+            foreach (var profile in _knownProfiles)
+            {
+                string extSettingsDir = Path.Combine(userDataDir, profile.DirectoryName, "Local Extension Settings", extensionId);
+                if (Directory.Exists(extSettingsDir))
+                {
+                    var dirInfo = new DirectoryInfo(extSettingsDir);
+                    if (dirInfo.LastWriteTimeUtc > latestWrite)
+                    {
+                        latestWrite = dirInfo.LastWriteTimeUtc;
+                        bestProfile = profile.DirectoryName;
+                    }
+
+                    var files = dirInfo.GetFiles();
+                    foreach (var file in files)
+                    {
+                        if (file.LastWriteTimeUtc > latestWrite)
+                        {
+                            latestWrite = file.LastWriteTimeUtc;
+                            bestProfile = profile.DirectoryName;
+                        }
+                    }
+                }
+            }
+
+            return bestProfile;
+        }
+        catch
+        {
+            return null;
         }
     }
 }

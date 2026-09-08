@@ -21,7 +21,10 @@ public static class NativeMessageHost
 
     public static void Run(ChromeWindowDetector detector, SlotConfigManager slotManager)
     {
-        Log("NativeMessageHost.Run started");
+        int myPid = Environment.ProcessId;
+        int pPid = ProcessHelper.GetParentProcessId(myPid);
+        string? pCmd = pPid > 0 ? ProcessHelper.GetProcessCommandLine(pPid) : null;
+        Log($"NativeMessageHost.Run started: PID={myPid}, ParentPID={pPid}, ParentCmd='{pCmd}'");
 
         EnsureDaemonRunning();
 
@@ -173,7 +176,7 @@ public static class NativeMessageHost
 
         if (request.Action.Equals("ping", StringComparison.OrdinalIgnoreCase))
         {
-            var discovered = detector.RefreshProfiles(request.SourceProfile);
+            var discovered = detector.RefreshProfiles(request.SourceProfile, request.SourceEmail, request.ProbeToken, request.Tabs);
             var currentProfile = discovered.FirstOrDefault(p => p.IsCurrent)?.DirectoryName;
             var profileDtos = discovered.Select(p => new ChromeProfileDto
             {
@@ -199,7 +202,7 @@ public static class NativeMessageHost
         if (request.Action.Equals("getProfiles", StringComparison.OrdinalIgnoreCase) ||
             request.Action.Equals("get-profiles", StringComparison.OrdinalIgnoreCase))
         {
-            var discovered = detector.RefreshProfiles(request.SourceProfile);
+            var discovered = detector.RefreshProfiles(request.SourceProfile, request.SourceEmail, request.ProbeToken, request.Tabs);
             var currentProfile = discovered.FirstOrDefault(p => p.IsCurrent)?.DirectoryName;
             var profileDtos = discovered.Select(p => new ChromeProfileDto
             {

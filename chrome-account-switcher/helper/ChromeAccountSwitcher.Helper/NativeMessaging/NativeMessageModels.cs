@@ -32,6 +32,9 @@ public class NativeMessageRequest
     [JsonPropertyName("sourceProfile")]
     public string? SourceProfile { get; set; }
 
+    [JsonPropertyName("sourceEmail")]
+    public string? SourceEmail { get; set; }
+
     [JsonPropertyName("tabs")]
     public List<TabItemDto>? Tabs { get; set; }
 
@@ -40,6 +43,9 @@ public class NativeMessageRequest
 
     [JsonPropertyName("slots")]
     public List<SlotConfigEntry>? Slots { get; set; }
+
+    [JsonPropertyName("probeToken")]
+    public string? ProbeToken { get; set; }
 }
 
 public class ChromeProfileDto

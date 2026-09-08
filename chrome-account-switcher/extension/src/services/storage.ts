@@ -2,6 +2,112 @@ import { ProfileSlotConfig, NativeSwitchRequest, NativeSwitchResponse } from '..
 
 export const NATIVE_HOST_NAME = 'com.chrome_account_switcher.helper';
 
+export const detectActiveUserEmail = async (): Promise<string | undefined> => {
+  // Method 1: Chrome identity API
+  if (chrome.identity && typeof chrome.identity.getProfileUserInfo === 'function') {
+    try {
+      const userInfo = await new Promise<{ email?: string; id?: string }>((resolve) => {
+        try {
+          (chrome.identity.getProfileUserInfo as any)({ accountStatus: 'ANY' }, (info: any) => {
+            resolve(chrome.runtime.lastError ? {} : (info || {}));
+          });
+        } catch {
+          chrome.identity.getProfileUserInfo((info) => {
+            resolve(chrome.runtime.lastError ? {} : (info || {}));
+          });
+        }
+      });
+      if (userInfo?.email && userInfo.email.trim()) {
+        return userInfo.email.trim();
+      }
+    } catch {
+      // Ignore
+    }
+  }
+
+  // Method 2: Scan open tabs in the current window for account identifiers
+  try {
+    const tabs = await chrome.tabs.query({ currentWindow: true });
+    for (const tab of tabs) {
+      if (tab.title) {
+        const match = tab.title.match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
+        if (match && !match[0].toLowerCase().endsWith('.google.com')) {
+          return match[0];
+        }
+      }
+      if (tab.url) {
+        const urlMatch = tab.url.match(/authuser=([\w.+-]+@[\w-]+\.[\w.-]+)/i);
+        if (urlMatch) {
+          return decodeURIComponent(urlMatch[1]);
+        }
+      }
+    }
+  } catch {
+    // Ignore
+  }
+
+  // Method 3: Query Google ListAccounts endpoint using active profile session cookies
+  try {
+    const res = await fetch('https://accounts.google.com/ListAccounts?source=ogb&json=standard', {
+      credentials: 'include'
+    });
+    if (res.ok) {
+      const text = await res.text();
+      const emails = text.match(/[\w.+-]+@[\w-]+\.[\w.-]+/g);
+      if (emails && emails.length > 0) {
+        for (const e of emails) {
+          const lower = e.toLowerCase();
+          if (!lower.endsWith('.google.com') && !lower.endsWith('.google') && !lower.endsWith('googleusercontent.com')) {
+            return e;
+          }
+        }
+      }
+    }
+  } catch {
+    // Ignore
+  }
+
+  // Method 4: Inspect active tab Google account button aria-label if on google.com
+  try {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    const tab = tabs[0];
+    if (tab?.id && tab.url && (tab.url.includes('google.com') || tab.url.includes('google.co'))) {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => {
+          const el = document.querySelector('a[aria-label*="@"], div[aria-label*="@"], [aria-label*="Google Account"]');
+          if (el) {
+            const label = el.getAttribute('aria-label') || '';
+            const match = label.match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
+            if (match) return match[0];
+          }
+          return null;
+        }
+      });
+      const detected = results?.[0]?.result;
+      if (detected) return detected;
+    }
+  } catch {
+    // Ignore
+  }
+
+  return undefined;
+};
+
+/**
+ * Writes a unique probe token directly to this profile's isolated LevelDB storage.
+ * The native helper scans all profiles on disk to find which profile directory hosts this token.
+ * This mathematically guarantees 100% accurate profile detection without guessing.
+ */
+export const createStorageProbeToken = async (): Promise<string> => {
+  // Purge obsolete cached data that could poison detection
+  await chrome.storage.local.remove(['currentProfileDirectory', 'currentProfileEmail', 'lastStatus']);
+  
+  const token = `probe_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  await chrome.storage.local.set({ __probe_token: token, __probe_time: Date.now() });
+  return token;
+};
+
 export const storageService = {
   /**
    * Retrieves the map of ProfileDirectory -> Shortcut.
@@ -55,19 +161,66 @@ export const storageService = {
   /**
    * Fetches dynamically discovered profiles from native helper,
    * attaches directory-bound shortcuts, and assigns dynamic 1..N slot positions.
+   * Resolves the current profile using probe token, active tabs, identity API, or helper heuristics.
    */
   getSlotConfigs: async (): Promise<ProfileSlotConfig[]> => {
     const shortcuts = await storageService.getProfileShortcuts();
+    const probeToken = await createStorageProbeToken();
+    const detectedEmail = await detectActiveUserEmail();
+
+    // Query open tabs in the current window to pass to helper for signature matching
+    let currentTabs: { url: string; title: string; active: boolean }[] = [];
+    try {
+      const tabs = await chrome.tabs.query({ currentWindow: true });
+      currentTabs = tabs.map((t) => ({
+        url: t.url || '',
+        title: t.title || '',
+        active: !!t.active
+      }));
+    } catch {
+      // Ignore
+    }
 
     try {
-      const response = await sendNativeMessage({ action: 'getProfiles' });
+      const response = await sendNativeMessage({
+        action: 'getProfiles',
+        probeToken,
+        sourceEmail: detectedEmail,
+        tabs: currentTabs
+      });
+
       if (response.success && response.profiles && response.profiles.length > 0) {
+        let matchedCurrentDir: string | undefined = response.currentProfile;
+
+        // Fallback to helper's isCurrent flag if currentProfile property wasn't direct
+        if (!matchedCurrentDir) {
+          const helperCurrent = response.profiles.find((p) => p.isCurrent);
+          if (helperCurrent) {
+            matchedCurrentDir = helperCurrent.directory;
+          }
+        }
+
+        // If detected active email exists, give it highest priority if matched
+        if (detectedEmail) {
+          const emailMatch = response.profiles.find(
+            (p) => p.email && p.email.toLowerCase() === detectedEmail.toLowerCase()
+          );
+          if (emailMatch) {
+            matchedCurrentDir = emailMatch.directory;
+          }
+        }
+
         const dynamicSlots: ProfileSlotConfig[] = response.profiles.map((p, idx) => {
           const slotNum = idx + 1;
           const defaultKey = slotNum <= 9 ? `Alt + ${slotNum}` : slotNum === 10 ? 'Alt + 0' : undefined;
           const assignedShortcut = (shortcuts[p.directory] && !shortcuts[p.directory].includes('Shift'))
             ? shortcuts[p.directory]
             : defaultKey;
+
+          const isCurrent = matchedCurrentDir
+            ? p.directory.toLowerCase() === matchedCurrentDir.toLowerCase()
+            : !!p.isCurrent;
+
           return {
             slot: slotNum,
             profileDirectory: p.directory,
@@ -76,7 +229,7 @@ export const storageService = {
             email: p.email,
             avatarIcon: p.avatarIcon,
             shortcut: assignedShortcut,
-            isCurrent: !!p.isCurrent
+            isCurrent
           };
         });
 

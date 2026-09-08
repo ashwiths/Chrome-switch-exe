@@ -58,9 +58,11 @@ export interface NativeSwitchRequest {
   profileDirectory?: string;
   copyTabs?: boolean;
   sourceProfile?: string;
+  sourceEmail?: string;
   tabs?: TabInfo[];
   shortcut?: string;
   slots?: ProfileSlotConfig[];
+  probeToken?: string;
 }
 
 export interface NativeSwitchResponse {

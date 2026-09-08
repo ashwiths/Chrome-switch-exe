@@ -182,12 +182,6 @@ public static class ProcessHelper
             return match.Groups["dir"].Value;
         }
 
-        // If it is a Chrome main browser process and has no --type parameter, default profile is "Default"
-        if (!commandLine.Contains("--type=", StringComparison.OrdinalIgnoreCase))
-        {
-            return "Default";
-        }
-
         return null;
     }
 }

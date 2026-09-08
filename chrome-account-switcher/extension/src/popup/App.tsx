@@ -37,28 +37,36 @@ export const App: React.FC = () => {
   const loadData = async () => {
     setIsRefreshing(true);
     try {
-      // 1. Ping native helper
+      // 1. Discover dynamic profiles and resolve current profile with probe token
+      const loadedSlots = await storageService.getSlotConfigs();
+      setSlots(loadedSlots);
+
+      // 2. Check native helper connectivity
       const pingRes = await sendNativeMessage({ action: 'ping' });
       if (pingRes.success) {
         setHostStatus('connected');
         setHostError('');
+
+        // 3. Sync slots with native helper daemon
+        const currentSlot = loadedSlots.find((s) => s.isCurrent);
+        sendNativeMessage({
+          action: 'sync-slots',
+          slots: loadedSlots,
+          sourceProfile: currentSlot?.profileDirectory,
+          sourceEmail: currentSlot?.email
+        });
       } else {
         setHostStatus('error');
         setHostError(pingRes.error || 'Native helper not reachable');
       }
 
-      // 2. Discover dynamic profiles and attach directory-bound shortcuts
-      const loadedSlots = await storageService.getSlotConfigs();
-      setSlots(loadedSlots);
-
-      // 3. Sync slots with native helper
-      if (pingRes.success) {
-        sendNativeMessage({ action: 'sync-slots', slots: loadedSlots });
-      }
-
       const savedStatus = await storageService.getLastStatus();
       if (savedStatus) {
-        setLastStatus(savedStatus.message);
+        if (savedStatus.message && !savedStatus.message.includes('as current profile')) {
+          setLastStatus(savedStatus.message);
+        } else {
+          setLastStatus('');
+        }
       }
     } finally {
       setIsRefreshing(false);
@@ -198,9 +206,11 @@ export const App: React.FC = () => {
       <header className="flex flex-col gap-2.5 pb-2.5 border-b border-white/10">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md bg-gradient-to-br from-blue-600 to-sky-400 flex items-center justify-center text-white text-xs font-bold shadow-md shadow-sky-500/20">
-              ⇄
-            </div>
+            <img
+              src="/icons/icon-48.png"
+              alt="Chrome Switcher Logo"
+              className="w-6 h-6 rounded-md shadow-md shadow-blue-500/20 object-contain"
+            />
             <div className="flex flex-col">
               <h1 className="text-sm font-bold text-white tracking-tight leading-none">
                 Chrome Switcher
