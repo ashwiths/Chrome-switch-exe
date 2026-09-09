@@ -56,32 +56,34 @@ chrome.commands.onCommand.addListener(async (command: string) => {
   }
 });
 
-// Handle slot or profile directory switching via native messaging with tab copying
-export async function handleSwitchSlot(slotNumber: number, profileDirectory?: string) {
-  console.log(`[Background] Initiating switch to Slot ${slotNumber} (${profileDirectory || 'resolving...'}) with tab copying...`);
+// Handle slot or profile directory switching via native messaging
+export async function handleSwitchSlot(slotNumber: number, profileDirectory?: string, copyTabs = false) {
+  console.log(`[Background] Initiating fast switch to Slot ${slotNumber} (${profileDirectory || 'resolving...'}) [copyTabs=${copyTabs}]`);
 
   let validTabs: TabInfo[] = [];
   let skippedCount = 0;
 
-  try {
-    let currentTabs = await chrome.tabs.query({ lastFocusedWindow: true });
-    if (!currentTabs || currentTabs.length === 0) {
-      currentTabs = await chrome.tabs.query({ active: true });
-    }
-    for (const tab of currentTabs) {
-      if (tab.url && (tab.url.startsWith('http://') || tab.url.startsWith('https://'))) {
-        validTabs.push({
-          url: tab.url,
-          title: tab.title || '',
-          active: !!tab.active,
-          index: tab.index
-        });
-      } else {
-        skippedCount++;
+  if (copyTabs) {
+    try {
+      let currentTabs = await chrome.tabs.query({ lastFocusedWindow: true });
+      if (!currentTabs || currentTabs.length === 0) {
+        currentTabs = await chrome.tabs.query({ active: true });
       }
+      for (const tab of currentTabs) {
+        if (tab.url && (tab.url.startsWith('http://') || tab.url.startsWith('https://'))) {
+          validTabs.push({
+            url: tab.url,
+            title: tab.title || '',
+            active: !!tab.active,
+            index: tab.index
+          });
+        } else {
+          skippedCount++;
+        }
+      }
+    } catch (err) {
+      console.warn('[Background] Failed to query current window tabs:', err);
     }
-  } catch (err) {
-    console.warn('[Background] Failed to query current window tabs:', err);
   }
 
   // If profileDirectory wasn't passed, resolve from dynamic slots
@@ -102,14 +104,16 @@ export async function handleSwitchSlot(slotNumber: number, profileDirectory?: st
     action: 'switch-profile',
     slot: slotNumber,
     profileDirectory: targetDir,
-    copyTabs: true,
+    copyTabs: copyTabs,
     tabs: validTabs
   });
 
   if (response.success) {
-    const copiedInfo = response.tabsCopied !== undefined ? `${response.tabsCopied} tabs copied` : `${validTabs.length} tabs sent`;
-    const skipInfo = skippedCount > 0 ? ` (${skippedCount} skipped)` : '';
-    const msg = `Switched to Slot ${slotNumber} (${response.displayName || response.profile || targetDir || 'Profile'}). ${copiedInfo}${skipInfo}.`;
+    const info = copyTabs
+      ? (response.tabsCopied !== undefined ? `${response.tabsCopied} tabs copied` : `${validTabs.length} tabs sent`)
+      : 'Instant switch';
+    const skipInfo = copyTabs && skippedCount > 0 ? ` (${skippedCount} skipped)` : '';
+    const msg = `Switched to Slot ${slotNumber} (${response.displayName || response.profile || targetDir || 'Profile'}). ${info}${skipInfo}.`;
     console.log(`[Background] ${msg}`);
     await storageService.setLastStatus(msg);
   } else {
@@ -125,15 +129,15 @@ export async function handleSwitchSlot(slotNumber: number, profileDirectory?: st
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.action === 'trigger-custom-shortcut') {
     console.log(`[Background] Custom shortcut fired: ${message.combination} -> ${message.profileDirectory || 'Slot ' + message.slot}`);
-    handleSwitchSlot(message.slot || 1, message.profileDirectory).then(sendResponse);
+    handleSwitchSlot(message.slot || 1, message.profileDirectory, message.copyTabs ?? false).then(sendResponse);
     return true;
   }
   if (message.action === 'switch-slot' && typeof message.slot === 'number') {
-    handleSwitchSlot(message.slot, message.profileDirectory).then(sendResponse);
+    handleSwitchSlot(message.slot, message.profileDirectory, message.copyTabs ?? false).then(sendResponse);
     return true; // async response
   }
   if (message.action === 'switch-profile' && message.profileDirectory) {
-    handleSwitchSlot(message.slot || 1, message.profileDirectory).then(sendResponse);
+    handleSwitchSlot(message.slot || 1, message.profileDirectory, message.copyTabs ?? false).then(sendResponse);
     return true;
   }
 });

@@ -27,8 +27,81 @@ internal class Program
             return;
         }
 
-        // Otherwise run in diagnostic / CLI mode
+        if (args.Length >= 2 && args[0].Equals("--switch-slot", StringComparison.OrdinalIgnoreCase))
+        {
+            HandleSwitchSlotCli(args, detector, slotManager);
+            return;
+        }
+
+        if (args.Length >= 2 && args[0].Equals("--focus-hwnd", StringComparison.OrdinalIgnoreCase))
+        {
+            HandleFocusHwndCli(args);
+            return;
+        }
+
+        if (args.Length >= 1 && args[0].Equals("--listen-hotkeys", StringComparison.OrdinalIgnoreCase))
+        {
+            RunHotkeyDaemon(detector, slotManager);
+            return;
+        }
+
+        // Otherwise run full diagnostic / CLI mode
         RunDiagnosticCli(args, detector, slotManager);
+    }
+
+    private static void HandleSwitchSlotCli(string[] args, ChromeWindowDetector detector, SlotConfigManager slotManager)
+    {
+        if (int.TryParse(args[1], out int slotNum))
+        {
+            var tabs = new List<TabItemDto>();
+            for (int i = 2; i < args.Length; i++)
+            {
+                if (args[i].StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                    args[i].StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                {
+                    tabs.Add(new TabItemDto { Url = args[i], Title = args[i], Active = (tabs.Count == 0) });
+                }
+            }
+
+            Console.WriteLine($"Switching to Slot {slotNum}...");
+            var res = NativeMessageHost.HandleRequest(new NativeMessageRequest
+            {
+                Action = "switch-profile",
+                Slot = slotNum,
+                CopyTabs = tabs.Count > 0,
+                Tabs = tabs
+            }, detector, slotManager);
+
+            Console.WriteLine($"Result: {(res.Success ? "SUCCESS" : "FAILED")}");
+            if (res.Success)
+            {
+                Console.WriteLine($"Focused Profile '{res.Profile}' (HWND: 0x{(res.WindowHandle ?? 0):X8}).");
+            }
+            else
+            {
+                Console.WriteLine($"Error: {res.Error}");
+            }
+        }
+    }
+
+    private static void HandleFocusHwndCli(string[] args)
+    {
+        if (long.TryParse(args[1], out long rawHwnd) || (args[1].StartsWith("0x", StringComparison.OrdinalIgnoreCase) && long.TryParse(args[1][2..], System.Globalization.NumberStyles.HexNumber, null, out rawHwnd)))
+        {
+            IntPtr targetHwnd = new IntPtr(rawHwnd);
+            Console.WriteLine($"Bringing window HWND 0x{targetHwnd.ToInt64():X8} to foreground...");
+            bool success = WindowManager.FocusWindow(targetHwnd);
+            Console.WriteLine($"Focus result: {(success ? "SUCCESS" : "FAILED")}");
+        }
+    }
+
+    private static void RunHotkeyDaemon(ChromeWindowDetector detector, SlotConfigManager slotManager)
+    {
+        Console.WriteLine("Starting global Win32 low-level keyboard hook daemon...");
+        using var hook = new ChromeAccountSwitcher.Helper.Hotkeys.GlobalKeyboardHook(detector, slotManager);
+        hook.Start();
+        Console.WriteLine("Global shortcuts active via low-level hook. Running background daemon...");
+        new System.Threading.ManualResetEvent(false).WaitOne();
     }
 
     private static void RunDiagnosticCli(string[] args, ChromeWindowDetector detector, SlotConfigManager slotManager)

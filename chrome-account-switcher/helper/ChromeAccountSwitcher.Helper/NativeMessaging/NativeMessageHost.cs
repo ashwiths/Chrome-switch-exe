@@ -19,12 +19,39 @@ public static class NativeMessageHost
         try { File.AppendAllText(LogFile, $"[{DateTime.Now:HH:mm:ss.fff}] {msg}\r\n"); } catch { }
     }
 
+    public static IntPtr CallingParentHwnd { get; set; } = IntPtr.Zero;
+
     public static void Run(ChromeWindowDetector detector, SlotConfigManager slotManager)
     {
         int myPid = Environment.ProcessId;
         int pPid = ProcessHelper.GetParentProcessId(myPid);
         string? pCmd = pPid > 0 ? ProcessHelper.GetProcessCommandLine(pPid) : null;
         Log($"NativeMessageHost.Run started: PID={myPid}, ParentPID={pPid}, ParentCmd='{pCmd}'");
+
+        // Parse --parent-window from command-line arguments or parent cmd
+        foreach (var arg in Environment.GetCommandLineArgs())
+        {
+            if (arg.StartsWith("--parent-window=", StringComparison.OrdinalIgnoreCase))
+            {
+                if (long.TryParse(arg.Substring("--parent-window=".Length), out long raw))
+                {
+                    CallingParentHwnd = new IntPtr(raw);
+                    break;
+                }
+            }
+        }
+        if (CallingParentHwnd == IntPtr.Zero && !string.IsNullOrEmpty(pCmd))
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(pCmd, @"--parent-window=(\d+)");
+            if (m.Success && long.TryParse(m.Groups[1].Value, out long raw))
+            {
+                CallingParentHwnd = new IntPtr(raw);
+            }
+        }
+        if (CallingParentHwnd != IntPtr.Zero)
+        {
+            Log($"Captured CallingParentHwnd: 0x{CallingParentHwnd.ToInt64():X8} ({CallingParentHwnd})");
+        }
 
         EnsureDaemonRunning();
 
@@ -178,6 +205,10 @@ public static class NativeMessageHost
         {
             var discovered = detector.RefreshProfiles(request.SourceProfile, request.SourceEmail, request.ProbeToken, request.Tabs);
             var currentProfile = discovered.FirstOrDefault(p => p.IsCurrent)?.DirectoryName;
+            if (CallingParentHwnd != IntPtr.Zero && !string.IsNullOrWhiteSpace(currentProfile))
+            {
+                ProfileWindowCache.RecordWindow(currentProfile, CallingParentHwnd);
+            }
             var profileDtos = discovered.Select(p => new ChromeProfileDto
             {
                 Directory = p.DirectoryName,
@@ -204,6 +235,10 @@ public static class NativeMessageHost
         {
             var discovered = detector.RefreshProfiles(request.SourceProfile, request.SourceEmail, request.ProbeToken, request.Tabs);
             var currentProfile = discovered.FirstOrDefault(p => p.IsCurrent)?.DirectoryName;
+            if (CallingParentHwnd != IntPtr.Zero && !string.IsNullOrWhiteSpace(currentProfile))
+            {
+                ProfileWindowCache.RecordWindow(currentProfile, CallingParentHwnd);
+            }
             var profileDtos = discovered.Select(p => new ChromeProfileDto
             {
                 Directory = p.DirectoryName,
@@ -336,6 +371,11 @@ public static class NativeMessageHost
                 slotManager.SyncSlots(request.Slots);
             }
 
+            if (CallingParentHwnd != IntPtr.Zero && !string.IsNullOrWhiteSpace(request.SourceProfile))
+            {
+                ProfileWindowCache.RecordWindow(request.SourceProfile, CallingParentHwnd);
+            }
+
             return new NativeMessageResponse
             {
                 Success = true,
@@ -395,15 +435,7 @@ public static class NativeMessageHost
             }
 
             // 1. Identify source profile
-            string? sourceProfile = request.SourceProfile;
-            var detectedWindows = detector.DetectChromeWindows(out _);
-            var browserWindows = detectedWindows.Where(w => w.IsNormalBrowserWindow).ToList();
-
-            if (string.IsNullOrEmpty(sourceProfile))
-            {
-                var currentFocused = browserWindows.FirstOrDefault(w => w.IsFocused);
-                sourceProfile = currentFocused?.ProfileDisplayName ?? currentFocused?.ProfileDirectory ?? "Unknown";
-            }
+            string? sourceProfile = request.SourceProfile ?? "Unknown";
 
             // 2. Filter and sanitize tabs to copy
             var validUrls = new List<string>();
@@ -424,50 +456,25 @@ public static class NativeMessageHost
                 }
             }
 
-            // 3. Find windows belonging to target directory
-            var matchingWindows = browserWindows
-                .Where(w => w.ProfileDirectory != null &&
-                            w.ProfileDirectory.Equals(targetDirectory, StringComparison.OrdinalIgnoreCase))
-                .ToList();
-
-            // Fallback: If no direct directory match, check if title matches target directory or display name
-            if (matchingWindows.Count == 0 && !string.IsNullOrWhiteSpace(targetDisplayName))
-            {
-                matchingWindows = browserWindows
-                    .Where(w => w.Title.IndexOf(targetDisplayName, StringComparison.OrdinalIgnoreCase) >= 0)
-                    .ToList();
-            }
-
-            bool isTargetRunning = matchingWindows.Count > 0;
+            // 3. Fast Profile Switch
+            IntPtr? cachedHwnd = ProfileWindowCache.GetWindow(targetDirectory);
             IntPtr targetHwnd = IntPtr.Zero;
-            string? resolvedDisplayName = targetDisplayName;
+            string resolvedDisplayName = targetDisplayName ?? targetDirectory;
 
-            if (isTargetRunning)
+            if (cachedHwnd.HasValue && WindowManager.IsWindow(cachedHwnd.Value) && WindowManager.IsWindowVisible(cachedHwnd.Value))
             {
-                // Target profile is ALREADY RUNNING:
-                // If tabs to copy, open them in the running profile
+                // Fast Path 1: Instant HWND activation (< 2ms)
+                targetHwnd = cachedHwnd.Value;
                 if (validUrls.Count > 0)
                 {
                     ChromeLauncher.OpenUrlsInProfile(targetDirectory, validUrls);
-                    System.Threading.Thread.Sleep(150); // Allow Chrome singleton IPC to receive tabs
                 }
-
-                // Deterministic Window Selection:
-                // 1. Prefer focused window if already active
-                // 2. Prefer visible, non-minimized normal browser window
-                // 3. Fallback to any matching window
-                var targetWindow = matchingWindows.FirstOrDefault(w => w.IsFocused)
-                                   ?? matchingWindows.FirstOrDefault(w => w.IsVisible && !w.IsMinimized)
-                                   ?? matchingWindows.First();
-
-                targetHwnd = targetWindow.Hwnd;
-                resolvedDisplayName = resolvedDisplayName ?? targetWindow.ProfileDisplayName ?? targetDirectory;
                 WindowManager.FocusWindow(targetHwnd);
             }
             else
             {
-                // Target profile is NOT RUNNING:
-                // Launch Chrome for target profile with the copied URLs (or empty if none)
+                // Fast Path 2: Instruct Chrome to open/switch profile via singleton IPC (~60-90ms)
+                WindowManager.AllowSetForegroundWindow(WindowManager.ASFW_ANY);
                 bool launched = ChromeLauncher.OpenUrlsInProfile(targetDirectory, validUrls);
                 if (!launched)
                 {
@@ -482,22 +489,20 @@ public static class NativeMessageHost
                     };
                 }
 
-                // Wait and poll for target window to initialize (up to 3 seconds)
-                for (int attempt = 0; attempt < 12; attempt++)
+                // Quick capture of newly activated Chrome window
+                for (int i = 0; i < 4; i++)
                 {
-                    System.Threading.Thread.Sleep(250);
-                    var reDetected = detector.DetectChromeWindows(out _);
-                    var targetWin = reDetected.FirstOrDefault(w =>
-                        w.IsNormalBrowserWindow &&
-                        ((w.ProfileDirectory != null && w.ProfileDirectory.Equals(targetDirectory, StringComparison.OrdinalIgnoreCase)) ||
-                         (!string.IsNullOrEmpty(targetDisplayName) && w.Title.IndexOf(targetDisplayName, StringComparison.OrdinalIgnoreCase) >= 0)));
-
-                    if (targetWin != null)
+                    System.Threading.Thread.Sleep(20);
+                    IntPtr fg = WindowManager.GetForegroundWindow();
+                    if (fg != IntPtr.Zero)
                     {
-                        targetHwnd = targetWin.Hwnd;
-                        resolvedDisplayName = resolvedDisplayName ?? targetWin.ProfileDisplayName ?? targetDirectory;
-                        WindowManager.FocusWindow(targetHwnd);
-                        break;
+                        string cls = WindowManager.GetWindowClass(fg);
+                        if (cls.StartsWith("Chrome_WidgetWin", StringComparison.OrdinalIgnoreCase))
+                        {
+                            targetHwnd = fg;
+                            ProfileWindowCache.RecordWindow(targetDirectory, fg);
+                            break;
+                        }
                     }
                 }
             }
@@ -506,9 +511,9 @@ public static class NativeMessageHost
             {
                 Success = true,
                 Profile = targetDirectory,
-                DisplayName = resolvedDisplayName ?? targetDirectory,
+                DisplayName = resolvedDisplayName,
                 SourceProfile = sourceProfile,
-                TargetProfile = resolvedDisplayName ?? targetDirectory,
+                TargetProfile = resolvedDisplayName,
                 TabsCopied = validUrls.Count,
                 TabsSkipped = tabsSkipped,
                 WindowHandle = targetHwnd != IntPtr.Zero ? targetHwnd.ToInt64() : null

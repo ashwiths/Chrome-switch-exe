@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "c:\\Users\\infan\\Desktop\\Chrome switch exe\\chrome-account-switcher\\helper\\ChromeAccountSwitcher.Helper\\ChromeAccountSwitcher.Helper.csproj": {}
+    "C:\\Users\\infan\\Desktop\\Chrome switch exe\\chrome-account-switcher\\helper\\ChromeAccountSwitcher.Helper\\ChromeAccountSwitcher.Helper.csproj": {}
   },
   "projects": {
-    "c:\\Users\\infan\\Desktop\\Chrome switch exe\\chrome-account-switcher\\helper\\ChromeAccountSwitcher.Helper\\ChromeAccountSwitcher.Helper.csproj": {
+    "C:\\Users\\infan\\Desktop\\Chrome switch exe\\chrome-account-switcher\\helper\\ChromeAccountSwitcher.Helper\\ChromeAccountSwitcher.Helper.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "c:\\Users\\infan\\Desktop\\Chrome switch exe\\chrome-account-switcher\\helper\\ChromeAccountSwitcher.Helper\\ChromeAccountSwitcher.Helper.csproj",
+        "projectUniqueName": "C:\\Users\\infan\\Desktop\\Chrome switch exe\\chrome-account-switcher\\helper\\ChromeAccountSwitcher.Helper\\ChromeAccountSwitcher.Helper.csproj",
         "projectName": "ChromeAccountSwitcher.Helper",
-        "projectPath": "c:\\Users\\infan\\Desktop\\Chrome switch exe\\chrome-account-switcher\\helper\\ChromeAccountSwitcher.Helper\\ChromeAccountSwitcher.Helper.csproj",
+        "projectPath": "C:\\Users\\infan\\Desktop\\Chrome switch exe\\chrome-account-switcher\\helper\\ChromeAccountSwitcher.Helper\\ChromeAccountSwitcher.Helper.csproj",
         "packagesPath": "C:\\Users\\infan\\.nuget\\packages\\",
-        "outputPath": "c:\\Users\\infan\\Desktop\\Chrome switch exe\\chrome-account-switcher\\helper\\ChromeAccountSwitcher.Helper\\obj\\",
+        "outputPath": "C:\\Users\\infan\\Desktop\\Chrome switch exe\\chrome-account-switcher\\helper\\ChromeAccountSwitcher.Helper\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\infan\\AppData\\Roaming\\NuGet\\NuGet.Config"

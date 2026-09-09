@@ -115,8 +115,7 @@ public static class ChromeLauncher
             {
                 FileName = chromeExe,
                 Arguments = argBuilder.ToString(),
-                UseShellExecute = false,
-                CreateNoWindow = true
+                UseShellExecute = true
             };
 
             using var proc = Process.Start(startInfo);

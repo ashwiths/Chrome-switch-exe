@@ -47,7 +47,15 @@ public static class WindowManager
     public static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
 
     [DllImport("user32.dll")]
+    public static extern bool IsWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
     public static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern bool AllowSetForegroundWindow(int dwProcessId);
+
+    public const int ASFW_ANY = -1;
 
     [DllImport("user32.dll")]
     public static extern bool IsIconic(IntPtr hWnd);
@@ -125,6 +133,8 @@ public static class WindowManager
 
         try
         {
+            AllowSetForegroundWindow(ASFW_ANY);
+
             if (foregroundThreadId != 0 && foregroundThreadId != currentThreadId)
             {
                 attachedToForeground = AttachThreadInput(currentThreadId, foregroundThreadId, true);

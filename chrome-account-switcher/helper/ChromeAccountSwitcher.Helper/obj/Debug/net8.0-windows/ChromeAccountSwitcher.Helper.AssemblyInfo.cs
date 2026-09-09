@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("ChromeAccountSwitcher.Helper")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+38fa80b9cd320f6b93357c420190197ecb94fb09")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+027188a48de5397e4282d6e4335554cc5b64e4bb")]
 [assembly: System.Reflection.AssemblyProductAttribute("ChromeAccountSwitcher.Helper")]
 [assembly: System.Reflection.AssemblyTitleAttribute("ChromeAccountSwitcher.Helper")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

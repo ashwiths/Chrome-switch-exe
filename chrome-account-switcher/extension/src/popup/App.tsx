@@ -98,39 +98,16 @@ export const App: React.FC = () => {
     setLastStatus(`Switching to ${targetDir || 'Profile'}...`);
 
     try {
-      const validTabs = [];
-      let skippedCount = 0;
-      try {
-        const currentTabs = await chrome.tabs.query({ currentWindow: true, lastFocusedWindow: true });
-        for (const tab of currentTabs) {
-          if (tab.url && (tab.url.startsWith('http://') || tab.url.startsWith('https://'))) {
-            validTabs.push({
-              url: tab.url,
-              title: tab.title || '',
-              active: !!tab.active,
-              index: tab.index
-            });
-          } else {
-            skippedCount++;
-          }
-        }
-      } catch (err) {
-        console.warn('Failed to query current window tabs:', err);
-      }
-
       const response = await sendNativeMessage({
         action: 'switch-profile',
         slot: slotNumber,
         profileDirectory: targetDir,
-        copyTabs: true,
-        tabs: validTabs
+        copyTabs: false
       });
 
       if (response.success) {
-        const copiedInfo = response.tabsCopied !== undefined ? `${response.tabsCopied} tabs copied` : `${validTabs.length} tabs sent`;
-        const skipInfo = skippedCount > 0 ? ` (${skippedCount} skipped)` : '';
         const targetName = response.displayName || response.profile || targetDir || 'Profile';
-        const msg = `Switched to ${targetName}. ${copiedInfo}${skipInfo}.`;
+        const msg = `Switched to ${targetName}.`;
         setLastStatus(msg);
         await storageService.setLastStatus(msg);
         loadData();
