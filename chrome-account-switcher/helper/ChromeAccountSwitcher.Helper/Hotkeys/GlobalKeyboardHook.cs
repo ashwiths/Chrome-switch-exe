@@ -87,6 +87,9 @@ public class GlobalKeyboardHook : IDisposable
     private static extern uint GetCurrentThreadId();
 
     private readonly ChromeWindowDetector _detector;
+    public const string DaemonMutexName = @"Local\ChromeAccountSwitcher_MasterDaemon";
+    public const string ReloadEventName = @"Local\ChromeAccountSwitcher_ReloadHotkeys";
+
     private readonly SlotConfigManager _slotManager;
     private readonly object _lock = new();
 
@@ -95,12 +98,14 @@ public class GlobalKeyboardHook : IDisposable
     private readonly Dictionary<(uint Mods, uint Vk), SlotConfigEntry> _activeMap = new();
 
     private Thread? _hookThread;
+    private Thread? _eventListenerThread;
     private uint _threadId;
     private IntPtr _hookId = IntPtr.Zero;
     private LowLevelKeyboardProc? _proc;
     private readonly ManualResetEventSlim _startedEvent = new();
     private FileSystemWatcher? _fileWatcher;
     private Mutex? _daemonMutex;
+    private EventWaitHandle? _reloadEvent;
     private bool _isPrimaryDaemon;
     private bool _disposed;
 
@@ -110,27 +115,62 @@ public class GlobalKeyboardHook : IDisposable
         _slotManager = slotManager;
     }
 
-    public void Start()
+    public bool Start()
     {
-        if (_hookThread != null) return;
+        if (_hookThread != null) return true;
 
         try
         {
-            _daemonMutex = new Mutex(true, @"Local\ChromeAccountSwitcher_HotkeyDaemon", out bool createdNew);
+            _daemonMutex = new Mutex(true, DaemonMutexName, out bool createdNew);
             _isPrimaryDaemon = createdNew;
+        }
+        catch (AbandonedMutexException)
+        {
+            _isPrimaryDaemon = true;
         }
         catch
         {
-            _isPrimaryDaemon = true;
+            _isPrimaryDaemon = false;
         }
 
         if (!_isPrimaryDaemon)
         {
-            Console.Error.WriteLine("[GlobalKeyboardHook] Primary background daemon is already running. Delegating shortcuts to primary daemon.");
-            return;
+            Console.Error.WriteLine("[GlobalKeyboardHook] Another Master Daemon instance is already running. Exiting redundant instance.");
+            return false;
         }
 
-        // Setup FileSystemWatcher for slots.json so any updates reload automatically
+        // Setup EventWaitHandle for instantaneous cross-process reload signaling
+        try
+        {
+            _reloadEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ReloadEventName);
+            _eventListenerThread = new Thread(() =>
+            {
+                while (!_disposed)
+                {
+                    try
+                    {
+                        if (_reloadEvent.WaitOne(1000))
+                        {
+                            if (_disposed) break;
+                            Console.Error.WriteLine("[GlobalKeyboardHook] Reload signal received via EventWaitHandle. Refreshing shortcuts...");
+                            Refresh();
+                        }
+                    }
+                    catch { break; }
+                }
+            })
+            {
+                IsBackground = true,
+                Name = "HotkeyReloadListenerThread"
+            };
+            _eventListenerThread.Start();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[GlobalKeyboardHook] EventWaitHandle setup error: {ex.Message}");
+        }
+
+        // Setup FileSystemWatcher for slots.json so any direct file updates reload automatically
         try
         {
             string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
@@ -163,6 +203,7 @@ public class GlobalKeyboardHook : IDisposable
         _hookThread.Start();
 
         _startedEvent.Wait(2000);
+        return true;
     }
 
     public void Refresh()
@@ -194,10 +235,18 @@ public class GlobalKeyboardHook : IDisposable
         _threadId = GetCurrentThreadId();
         _proc = HookCallback;
 
-        using (Process curProcess = Process.GetCurrentProcess())
-        using (ProcessModule curModule = curProcess.MainModule!)
+        try
         {
+            using Process curProcess = Process.GetCurrentProcess();
+            using ProcessModule curModule = curProcess.MainModule!;
             _hookId = SetWindowsHookEx(WH_KEYBOARD_LL, _proc, GetModuleHandle(curModule.ModuleName), 0);
+        }
+        catch { }
+
+        // Fallback to IntPtr.Zero if module handle failed
+        if (_hookId == IntPtr.Zero)
+        {
+            _hookId = SetWindowsHookEx(WH_KEYBOARD_LL, _proc, IntPtr.Zero, 0);
         }
 
         if (_hookId == IntPtr.Zero)
@@ -415,6 +464,12 @@ public class GlobalKeyboardHook : IDisposable
         if (_fileWatcher != null)
         {
             _fileWatcher.Dispose();
+        }
+
+        if (_reloadEvent != null)
+        {
+            try { _reloadEvent.Set(); } catch { }
+            _reloadEvent.Dispose();
         }
 
         if (_daemonMutex != null)

@@ -55,19 +55,6 @@ public static class NativeMessageHost
 
         EnsureDaemonRunning();
 
-        GlobalKeyboardHook? hook = null;
-        try
-        {
-            hook = new GlobalKeyboardHook(detector, slotManager);
-            hook.Start();
-            Log("GlobalKeyboardHook initialized within NativeMessageHost");
-        }
-        catch (Exception ex)
-        {
-            Log($"Failed to start GlobalKeyboardHook in NativeMessageHost: {ex.Message}");
-        }
-
-        using (hook)
         using (Stream inStream = Console.OpenStandardInput())
         using (Stream outStream = Console.OpenStandardOutput())
 
@@ -153,38 +140,85 @@ public static class NativeMessageHost
         return true;
     }
 
-    private static void EnsureDaemonRunning()
+    public static void EnsureDaemonRunning()
     {
         try
         {
-            int currentPid = Environment.ProcessId;
-            bool daemonRunning = Process.GetProcessesByName("ChromeAccountSwitcher.Helper")
-                .Any(p => p.Id != currentPid);
+            bool isDaemonRunning = false;
+            try
+            {
+                using var testMutex = Mutex.OpenExisting(GlobalKeyboardHook.DaemonMutexName);
+                isDaemonRunning = true;
+            }
+            catch (WaitHandleCannotBeOpenedException)
+            {
+                isDaemonRunning = false;
+            }
+            catch (Exception ex)
+            {
+                Log($"Mutex probe exception: {ex.Message}");
+            }
 
-            if (!daemonRunning)
+            if (!isDaemonRunning)
             {
                 string exePath = Environment.ProcessPath ??
                     Path.Combine(AppContext.BaseDirectory, "ChromeAccountSwitcher.Helper.exe");
 
                 if (File.Exists(exePath))
                 {
-                    var psi = new ProcessStartInfo
+                    string startupDir = Environment.GetFolderPath(Environment.SpecialFolder.Startup);
+                    string vbsPath = Path.Combine(startupDir, "ChromeAccountSwitcherDaemon.vbs");
+                    if (File.Exists(vbsPath))
                     {
-                        FileName = exePath,
-                        Arguments = "--listen-hotkeys",
-                        UseShellExecute = true,
-                        WindowStyle = ProcessWindowStyle.Hidden,
-                        CreateNoWindow = true
-                    };
-                    Process.Start(psi);
-                    Log("Started detached background hotkey daemon via EnsureDaemonRunning.");
+                        var psi = new ProcessStartInfo
+                        {
+                            FileName = "wscript.exe",
+                            Arguments = $"\"{vbsPath}\"",
+                            UseShellExecute = true,
+                            WindowStyle = ProcessWindowStyle.Hidden
+                        };
+                        Process.Start(psi);
+                        Log("Started detached background hotkey daemon via wscript VBS.");
+                    }
+                    else
+                    {
+                        var psi = new ProcessStartInfo
+                        {
+                            FileName = exePath,
+                            Arguments = "--listen-hotkeys",
+                            UseShellExecute = true,
+                            WindowStyle = ProcessWindowStyle.Hidden,
+                            CreateNoWindow = true
+                        };
+                        Process.Start(psi);
+                        Log("Started detached background hotkey daemon directly.");
+                    }
                 }
+            }
+            else
+            {
+                Log("Master Daemon is already active (Mutex validated).");
             }
         }
         catch (Exception ex)
         {
             Log($"EnsureDaemonRunning failed: {ex.Message}");
         }
+    }
+
+    public static void NotifyDaemonToReloadHotkeys()
+    {
+        try
+        {
+            if (EventWaitHandle.TryOpenExisting(GlobalKeyboardHook.ReloadEventName, out var handle))
+            {
+                using (handle)
+                {
+                    handle.Set();
+                }
+            }
+        }
+        catch { }
     }
 
     public static NativeMessageResponse HandleRequest(
@@ -315,6 +349,7 @@ public static class NativeMessageHost
             if (request.Slot.HasValue)
             {
                 slotManager.SetSlotShortcut(request.Slot.Value, null);
+                NotifyDaemonToReloadHotkeys();
                 return new NativeMessageResponse
                 {
                     Success = true,
@@ -337,6 +372,7 @@ public static class NativeMessageHost
             if (request.Slot.HasValue && request.Slot.Value >= 1 && request.Slot.Value <= 100)
             {
                 slotManager.SetSlotShortcut(request.Slot.Value, request.Shortcut);
+                NotifyDaemonToReloadHotkeys();
                 return new NativeMessageResponse
                 {
                     Success = true,
@@ -369,6 +405,7 @@ public static class NativeMessageHost
             if (request.Slots != null && request.Slots.Count > 0)
             {
                 slotManager.SyncSlots(request.Slots);
+                NotifyDaemonToReloadHotkeys();
             }
 
             if (CallingParentHwnd != IntPtr.Zero && !string.IsNullOrWhiteSpace(request.SourceProfile))

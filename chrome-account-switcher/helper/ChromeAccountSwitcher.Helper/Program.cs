@@ -99,9 +99,17 @@ internal class Program
     {
         Console.WriteLine("Starting global Win32 low-level keyboard hook daemon...");
         using var hook = new ChromeAccountSwitcher.Helper.Hotkeys.GlobalKeyboardHook(detector, slotManager);
-        hook.Start();
+        if (!hook.Start())
+        {
+            Console.WriteLine("Global hotkey daemon is already active on this system. Exiting redundant instance.");
+            return;
+        }
+
         Console.WriteLine("Global shortcuts active via low-level hook. Running background daemon...");
-        new System.Threading.ManualResetEvent(false).WaitOne();
+        var exitEvent = new System.Threading.ManualResetEvent(false);
+        AppDomain.CurrentDomain.ProcessExit += (s, e) => exitEvent.Set();
+        Console.CancelKeyPress += (s, e) => { e.Cancel = true; exitEvent.Set(); };
+        exitEvent.WaitOne();
     }
 
     private static void RunDiagnosticCli(string[] args, ChromeWindowDetector detector, SlotConfigManager slotManager)
