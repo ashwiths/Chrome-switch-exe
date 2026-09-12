@@ -1,0 +1,9 @@
+{
+  "name": "chrome-account-switcher-root",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "npm --prefix extension run build",
+    "dev": "npm --prefix extension run dev"
+  }
+}
