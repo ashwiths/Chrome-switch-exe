@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>ChromeAccountSwitcherSetup</AssemblyName>
+    <RootNamespace>ChromeAccountSwitcher.Installer</RootNamespace>
+    <Version>1.0.0</Version>
+    <Company>Chrome Account Switcher</Company>
+    <Product>Chrome Account Switcher Installer</Product>
+    <AssemblyTitle>Chrome Account Switcher Setup</AssemblyTitle>
+    <Description>Windows Installer for Chrome Account Switcher Native Helper</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\**\*" />
+  </ItemGroup>
+
+</Project>

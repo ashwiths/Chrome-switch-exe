@@ -1,0 +1,18 @@
+# Build and release artifacts
+release/
+bin/
+obj/
+**/bin/
+**/obj/
+**/Resources/helper.gz
+
+# Node / Extension artifacts
+**/node_modules/
+dist/
+
+# IDE / User-specific files
+.vs/
+*.user
+*.suo
+.DS_Store
+Thumbs.db
